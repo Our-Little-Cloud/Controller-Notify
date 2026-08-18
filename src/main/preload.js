@@ -1,0 +1,28 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('api', {
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  testApi: (params) => ipcRenderer.invoke('test-api', params),
+  resolveChannelId: (params) => ipcRenderer.invoke('resolve-channel-id', params),
+  closeSettings: () => ipcRenderer.send('close-settings'),
+  minimizeSettings: () => ipcRenderer.send('minimize-settings'),
+  onStreamData: (callback) => ipcRenderer.on('stream-data', (_event, data) => callback(data)),
+  onClosePopup: (callback) => ipcRenderer.on('close-popup', callback),
+  sendClickStream: () => ipcRenderer.send('click-stream'),
+  sendClosePopup: () => ipcRenderer.send('close-popup'),
+  getHistory: () => ipcRenderer.invoke('get-history'),
+  clearHistory: () => ipcRenderer.invoke('clear-history'),
+  markHistoryClicked: (videoId) => ipcRenderer.invoke('mark-history-clicked', videoId),
+  getLiveStatus: () => ipcRenderer.invoke('get-live-status'),
+  checkLiveNow: () => ipcRenderer.invoke('check-live-now'),
+  openStreamUrl: (videoId) => ipcRenderer.send('open-stream-url', videoId),
+  openExternalUrl: (url) => ipcRenderer.send('open-external-url', url),
+  getChannels: () => ipcRenderer.invoke('get-channels'),
+  addChannel: (channelInput) => ipcRenderer.invoke('add-channel', channelInput),
+  removeChannel: (channelId) => ipcRenderer.invoke('remove-channel', channelId),
+  toggleChannel: (params) => ipcRenderer.invoke('toggle-channel', params),
+  importSubscriptionsCsv: (csvContent) => ipcRenderer.invoke('import-subscriptions-csv', csvContent),
+  onNotificationSettingChanged: (callback) => ipcRenderer.on('notification-setting-changed', (_event, value) => callback(value)),
+  onLiveStatusUpdated: (callback) => ipcRenderer.on('live-status-updated', (_event, data) => callback(data)),
+});

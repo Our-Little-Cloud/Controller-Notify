@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controller Notify - Live Notification</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="popup-container" id="popup">
+    <button class="popup-close-btn" id="popupCloseBtn" aria-label="Close notification" title="Close">×</button>
+    <div class="live-badge">🎮 LIVE</div>
+    <div class="content">
+      <div class="controller-image" id="controllerImage"></div>
+      <div class="stream-info">
+        <h3 class="stream-title" id="streamTitle">Loading...</h3>
+        <p class="channel-name" id="channelName">Controller Buddy</p>
+      </div>
+    </div>
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>

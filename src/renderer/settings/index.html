@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controller Notify - Settings</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="window-header">
+    <div class="header-content">
+      <span class="app-title">🎮 Controller Notify</span>
+      <span class="app-subtitle">Settings</span>
+    </div>
+    <div class="window-controls">
+      <button class="control-btn minimize-btn" id="minimizeBtn" title="Minimize">−</button>
+      <button class="control-btn close-btn" id="closeBtn" title="Close">×</button>
+    </div>
+  </div>
+  
+  <div class="settings-container">
+    <div class="tabs-wrapper">
+      <div class="tabs" id="tabsBar" role="tablist">
+        <button class="tab-btn active" role="tab" data-tab="general" aria-selected="true">⚙️ General</button>
+        <button class="tab-btn" role="tab" data-tab="channels" aria-selected="false">👥 Channels</button>
+        <button class="tab-btn" role="tab" data-tab="live" aria-selected="false">🔴 Live Now</button>
+        <button class="tab-btn" role="tab" data-tab="history" aria-selected="false">📜 History</button>
+        <button class="tab-btn" role="tab" data-tab="guide" aria-selected="false">📖 Guide</button>
+      </div>
+    </div>
+
+    <div class="tab-panel active" id="tab-general" role="tabpanel">
+      <form id="settingsForm" class="settings-form">
+        <div class="section">
+          <h2 class="section-title">🔑 YouTube API (Optional)</h2>
+          <div class="form-group">
+            <label for="apiKey">API Key (Optional)</label>
+            <input type="password" id="apiKey" placeholder="Leave empty for free 0-quota monitoring" autocomplete="off">
+            <span class="help-text">Optional. Free live monitoring works automatically without an API key!</span>
+          </div>
+          <div class="form-group">
+            <label for="channelUrl">Default Channel URL or @Handle</label>
+            <input type="text" id="channelUrl" placeholder="https://youtube.com/@VanTung or @VanTung" autocomplete="off">
+            <span class="help-text">Supports channel URL, @handle, or channel ID</span>
+          </div>
+          <div class="form-group">
+            <label for="channelId">Channel ID (auto-filled)</label>
+            <input type="text" id="channelId" readonly placeholder="Will be resolved from URL">
+          </div>
+          <button type="button" class="btn btn-secondary" id="testApiBtn">🧪 Test Connection</button>
+          <div id="testResult" class="test-result" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">🎨 Popup Appearance</h2>
+          <div class="form-group">
+            <label for="popupCorner">Popup Corner</label>
+            <select id="popupCorner">
+              <option value="bottom-right">Bottom Right</option>
+              <option value="bottom-left">Bottom Left</option>
+              <option value="top-right">Top Right</option>
+              <option value="top-left">Top Left</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="autoHideDuration">Auto-hide Duration (seconds)</label>
+            <input type="number" id="autoHideDuration" min="5" max="60" step="1">
+            <span class="help-text">How long the popup stays visible</span>
+          </div>
+          <div class="form-group">
+            <label for="controllerImage">Custom Controller Image (optional)</label>
+            <input type="text" id="controllerImage" placeholder="Path or URL to image">
+            <span class="help-text">Leave empty to use default gamepad emoji</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2 class="section-title">⚙️ Behavior</h2>
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="showNotifications">
+              <span class="checkmark"></span>
+              Show popup notification when stream goes live
+            </label>
+          </div>
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="openInBrowser">
+              <span class="checkmark"></span>
+              Open stream in browser (uncheck to open in app)
+            </label>
+          </div>
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="launchAtStartup">
+              <span class="checkmark"></span>
+              Launch at Windows startup
+            </label>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveBtn">
+            <span class="btn-text">💾 Save Settings</span>
+            <span class="btn-loading" style="display: none;">Saving...</span>
+          </button>
+        </div>
+        <div id="saveResult" class="save-result" style="display: none;"></div>
+      </form>
+    </div>
+
+    <div class="tab-panel" id="tab-channels" role="tabpanel" aria-hidden="true">
+      <!-- Sub-Tabs Bar -->
+      <div class="sub-tabs-bar" role="tablist">
+        <button type="button" class="sub-tab-btn active" data-subtab="monitored" role="tab" aria-selected="true">
+          📋 Monitored Channels (<span id="channelCount">0</span>)
+        </button>
+        <button type="button" class="sub-tab-btn" data-subtab="add-import" role="tab" aria-selected="false">
+          ➕ Add & Import
+        </button>
+      </div>
+
+      <!-- Sub-Tab 1: Monitored Channels -->
+      <div class="sub-tab-panel active" id="subtab-monitored" role="tabpanel">
+        <div class="section">
+          <div class="monitored-header">
+            <h2 class="section-title" style="margin-bottom: 0;">📋 Monitored Watchlist</h2>
+            <button type="button" class="btn btn-secondary btn-sm" id="refreshChannelsBtn" title="Check live status now">🔄 Refresh Status</button>
+          </div>
+          <!-- Search & Filter Controls -->
+          <div class="filter-toolbar">
+            <div class="search-input-wrapper">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="channelSearchInput" placeholder="Search channel name, @handle, or ID..." autocomplete="off">
+              <button type="button" id="clearSearchBtn" class="search-clear-btn" style="display: none;" title="Clear search">✕</button>
+            </div>
+            <div class="filter-pills" id="filterPills">
+              <button type="button" class="filter-pill active" data-filter="all">All</button>
+              <button type="button" class="filter-pill" data-filter="live">🔴 Live</button>
+              <button type="button" class="filter-pill" data-filter="offline">💤 Offline</button>
+              <button type="button" class="filter-pill" data-filter="enabled">🔔 Enabled</button>
+              <button type="button" class="filter-pill" data-filter="muted">🔕 Muted</button>
+            </div>
+          </div>
+          <div id="filterStatusText" class="filter-status-text" style="display: none;"></div>
+
+          <div id="channelsList" class="channels-list">
+            <div class="channels-empty">No channels added yet. Add a streamer handle or import a CSV!</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sub-Tab 2: Add & Import Channel -->
+      <div class="sub-tab-panel" id="subtab-add-import" role="tabpanel" style="display: none;">
+        <div class="section">
+          <h2 class="section-title">➕ Add Channel</h2>
+          <form id="addChannelForm" class="add-channel-form">
+            <div class="input-with-btn">
+              <input type="text" id="newChannelInput" placeholder="Enter @handle, URL, or Channel ID" autocomplete="off">
+              <button type="submit" class="btn btn-primary" id="addChannelBtn">Add</button>
+            </div>
+            <span class="help-text">Zero quota used! Monitor as many channels as you want.</span>
+          </form>
+          <div id="addChannelResult" class="test-result" style="display: none;"></div>
+        </div>
+
+        <div class="section" style="margin-top: 16px;">
+          <div class="import-header">
+            <h2 class="section-title" style="margin-bottom: 0;">📁 Import Subscriptions</h2>
+          </div>
+          <div class="drop-zone" id="csvDropZone">
+            <div class="drop-icon">📥</div>
+            <div class="drop-text">Drag & drop Google Takeout <strong>subscriptions.csv</strong> here</div>
+            <div class="drop-subtext">or click to select file</div>
+            <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+          </div>
+          <div id="importResult" class="test-result" style="display: none;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-live" role="tabpanel" aria-hidden="true">
+      <div class="live-panel-header">
+        <h2 class="section-title">🔴 Live Now Hub</h2>
+        <button type="button" class="btn btn-secondary" id="refreshLiveBtn">🔄 Refresh</button>
+      </div>
+      <div id="liveStatusContainer" class="live-status-container">
+        <div class="live-status-loading">Loading channel status...</div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-history" role="tabpanel" aria-hidden="true">
+      <div class="history-header">
+        <h2 class="section-title">📜 Notification History</h2>
+        <button type="button" class="btn btn-secondary" id="clearHistoryBtn">🗑️ Clear History</button>
+      </div>
+      <div id="historyList" class="history-list">
+        <div class="history-empty">No notifications yet</div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-guide" role="tabpanel" aria-hidden="true">
+      <div class="guide-container">
+        <!-- Section 1: Google Takeout Subscriptions -->
+        <div class="guide-card">
+          <div class="guide-card-header">
+            <h2 class="guide-card-title">📥 Import YouTube Subscriptions (Zero Setup)</h2>
+            <button type="button" class="btn btn-secondary btn-sm external-link-btn" data-url="https://takeout.google.com/">
+              🔗 Open Google Takeout
+            </button>
+          </div>
+          <p class="guide-card-subtitle">Export all your favorite streamers from Google in 1 minute with 0 API key:</p>
+          
+          <div class="guide-steps">
+            <div class="guide-step">
+              <div class="step-badge">1</div>
+              <div class="step-desc">Go to <strong>takeout.google.com</strong> and click <strong>"Deselect all"</strong>.</div>
+            </div>
+            <div class="guide-step">
+              <div class="step-badge">2</div>
+              <div class="step-desc">Scroll down and check only <strong>YouTube and YouTube Music</strong>.</div>
+            </div>
+            <div class="guide-step">
+              <div class="step-badge">3</div>
+              <div class="step-desc">Click <strong>"All YouTube data included"</strong>, deselect all, and check only <strong>subscriptions</strong>.</div>
+            </div>
+            <div class="guide-step">
+              <div class="step-badge">4</div>
+              <div class="step-desc">Click <strong>"Next step"</strong> ➔ <strong>"Create export"</strong>, download the <code>.zip</code>, and drag <code>subscriptions.csv</code> into the <strong>👥 Channels</strong> tab!</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Optional API Key -->
+        <div class="guide-card">
+          <div class="guide-card-header">
+            <h2 class="guide-card-title">🔑 YouTube API Key (Optional)</h2>
+            <button type="button" class="btn btn-secondary btn-sm external-link-btn" data-url="https://console.cloud.google.com/">
+              🔗 Open Cloud Console
+            </button>
+          </div>
+          <div class="guide-free-badge">✨ Optional! Controller Notify works 100% free without any API key.</div>
+          <p class="guide-card-subtitle">If you wish to configure your own Google Cloud API quota:</p>
+          
+          <div class="guide-steps">
+            <div class="guide-step">
+              <div class="step-badge">1</div>
+              <div class="step-desc">Go to <strong>console.cloud.google.com</strong> and create a new project.</div>
+            </div>
+            <div class="guide-step">
+              <div class="step-badge">2</div>
+              <div class="step-desc">In the search bar, look for <strong>"YouTube Data API v3"</strong> and click <strong>Enable</strong>.</div>
+            </div>
+            <div class="guide-step">
+              <div class="step-badge">3</div>
+              <div class="step-desc">Go to <strong>APIs & Services ➔ Credentials</strong> and click <strong>"Create Credentials" ➔ "API key"</strong>.</div>
+            </div>
+            <div class="guide-step">
+              <div class="step-badge">4</div>
+              <div class="step-desc">Copy your API key and paste it into the <strong>⚙️ General</strong> tab.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Quick Tips -->
+        <div class="guide-card">
+          <h2 class="guide-card-title" style="margin-bottom: 8px;">💡 Pro Tips & Shortcuts</h2>
+          <div class="guide-tips-list">
+            <div class="guide-tip-item">
+              <span class="tip-icon">👾</span>
+              <span><strong>Instant Add:</strong> You can add any streamer directly by entering their handle (e.g. <code>@VanTung</code> or <code>@tarik</code>) in the <strong>👥 Channels</strong> tab.</span>
+            </div>
+            <div class="guide-tip-item">
+              <span class="tip-icon">🔕</span>
+              <span><strong>Quick Mute:</strong> Right-click the system tray icon to quickly turn popup notifications on or off without opening settings.</span>
+            </div>
+            <div class="guide-tip-item">
+              <span class="tip-icon">▶️</span>
+              <span><strong>One-Click Watch:</strong> Click anywhere on a live notification popup or Live Now card to instantly jump to the stream.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
