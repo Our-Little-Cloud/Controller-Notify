@@ -1,7 +1,7 @@
 :root,
 :root[data-theme="pink"] {
-  --popup-bg: linear-gradient(135deg, #fff5f9 0%, #fce4ec 100%);
-  --popup-border: #f8bbd0;
+  --popup-bg: linear-gradient(135deg, #fff0f5 0%, #fce4ec 100%);
+  --popup-border: #f48fb1;
   --popup-badge-bg: linear-gradient(135deg, #e91e63 0%, #c2185b 100%);
   --popup-text: #1a1a2e;
   --popup-subtext: #880e4f;
@@ -9,8 +9,8 @@
 }
 
 :root[data-theme="dark"] {
-  --popup-bg: linear-gradient(135deg, #161925 0%, #0d0e15 100%);
-  --popup-border: #2d3248;
+  --popup-bg: linear-gradient(135deg, #161a29 0%, #0d0f17 100%);
+  --popup-border: #2d354d;
   --popup-badge-bg: linear-gradient(135deg, #ff007f 0%, #7928ca 100%);
   --popup-text: #f0f5ff;
   --popup-subtext: #00f0ff;
@@ -18,30 +18,30 @@
 }
 
 :root[data-theme="turquoise"] {
-  --popup-bg: linear-gradient(135deg, #e0f2f1 0%, #b2dfdb 100%);
-  --popup-border: #80cbc4;
+  --popup-bg: linear-gradient(135deg, #e0f4f2 0%, #b2dfdb 100%);
+  --popup-border: #4db6ac;
   --popup-badge-bg: linear-gradient(135deg, #00897b 0%, #004d40 100%);
-  --popup-text: #00251a;
+  --popup-text: #003830;
   --popup-subtext: #004d40;
   --popup-bar: #00897b;
 }
 
 :root[data-theme="gameboy"] {
-  --popup-bg: linear-gradient(135deg, #9bbc0f 0%, #8bac0f 100%);
-  --popup-border: #306230;
-  --popup-badge-bg: linear-gradient(135deg, #306230 0%, #0f380f 100%);
-  --popup-text: #0f380f;
-  --popup-subtext: #0f380f;
-  --popup-bar: #0f380f;
+  --popup-bg: linear-gradient(135deg, #d3d5cb 0%, #c5c7bc 100%);
+  --popup-border: #8b8e7e;
+  --popup-badge-bg: linear-gradient(135deg, #8b1d42 0%, #68102e 100%);
+  --popup-text: #222420;
+  --popup-subtext: #8b1d42;
+  --popup-bar: #8b1d42;
 }
 
 :root[data-theme="atomic-purple"] {
-  --popup-bg: linear-gradient(135deg, #2d2640 0%, #1f1b2c 100%);
-  --popup-border: #5c4a80;
+  --popup-bg: linear-gradient(135deg, #281d45 0%, #17102b 100%);
+  --popup-border: #563d82;
   --popup-badge-bg: linear-gradient(135deg, #ab47bc 0%, #7b1fa2 100%);
-  --popup-text: #f3e5f5;
-  --popup-subtext: #ce93d8;
-  --popup-bar: #ab47bc;
+  --popup-text: #f8f0fc;
+  --popup-subtext: #e1bee7;
+  --popup-bar: #d05ce3;
 }
 
 * {
