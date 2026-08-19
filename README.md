@@ -1,128 +1,180 @@
-# 🎮 Controller Notify — YouTube Live Companion
+<div align="center">
 
-A cute, high-performance desktop companion app for Windows that quietly monitors your favorite YouTube live streamers in the background with zero Google Cloud API quota required. Pops up smooth, animated corner notifications only when a watched streamer actually goes **LIVE**.
+# 🎮 Controller Notify
 
----
+### *Never miss your favorite YouTube live streams again!*
 
-## 🌟 Key Features
+A charming, ultra-lightweight Windows desktop companion that quietly sits in your system tray and pops up cute, retro-styled corner notifications the exact second your favorite channels go **LIVE**.
 
-### 👥 Multi-Channel Watchlist & Instant Setup
-- **Zero API Setup Required**: Free canonical `/live` HTML probe engine monitors as many channels as you want out of the box without needing a Google Cloud API key.
-- **Google Takeout One-Click Import**: Drag & drop your YouTube `subscriptions.csv` export to import all your subscribed channels in seconds.
-- **Instant Handle Addition**: Add streamers directly by `@handle` (e.g. `@VanTung` or `@tarik`), channel URL, or channel ID.
+![Windows Support](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-blue?style=for-the-badge&logo=windows)
+![Zero API Key Required](https://img.shields.io/badge/Setup-0--Quota%20Free%20API-success?style=for-the-badge&logo=youtube)
+![5 Retro Themes](https://img.shields.io/badge/Themes-5%20Retro%20Styles-purple?style=for-the-badge&logo=nintendo-switch)
+![License MIT](https://img.shields.io/badge/License-MIT-pink?style=for-the-badge)
 
-### 📋 Channels Sub-Tabs, Search & Filtering
-- **Monitored Channels Sub-Tab**:
-  - **`🔄 Refresh Status` Button**: Instantly sweep all watched channels for live broadcasts on demand.
-  - **Instant Real-Time Search**: Search by channel title, `@handle`, channel ID, or URL.
-  - **Status Filter Pills**: Quick toggle filters for `All`, `🔴 Live`, `💤 Offline`, `🔔 Enabled`, and `🔕 Muted`.
-  - **One-Click Browser Launch**: Click any channel card or `🔗` link button to open the creator's YouTube page directly in your default web browser.
-  - **Per-Channel Notification Muting**: Toggle `🔔` / `🔕` to enable or mute alerts per streamer.
-- **Add & Import Sub-Tab**:
-  - Add individual channels or bulk import subscriptions CSVs. Automatically redirects to your monitored watchlist upon import.
-
-### ⚡ Ultra-Low RAM & Zero-GPU Performance
-- **Tiny Memory Footprint**: Runs silently in the system tray using only **~35MB–45MB RAM**.
-- **Lazy Window Lifecycle**: Closing the Settings window releases Chromium V8 renderer memory (`settingsWindow = null`), dropping background RAM by **~100MB+**. Recreates settings instantly (~50ms) on tray click.
-- **0% Background GPU Usage**: Configured with `disable-gpu` Chromium flags for zero background GPU usage and zero laptop battery drain.
-- **Persistent Connection Pooling**: Shared `keepAlive` TCP socket pool for fast, low-overhead multi-channel polling.
-
-### 🎨 Customizable Corner Popups
-- **4 Corner Positions**: Choose `bottom-right`, `bottom-left`, `top-right`, or `top-left`.
-- **Smooth Physics Animations**: Eased sliding bounce-in and bounce-out animations.
-- **Auto-Hide Timer**: Configurable display duration (5s – 60s).
-- **Flexible Playback**: Choose to watch streams in your default web browser or in the built-in mini app player.
-
-### 📜 Notification History Log
-- Tracks the **50 most recent live streams** across all watched channels with live thumbnails, timestamps, and clicked indicator.
+[📥 Download Latest Installer](../../releases) • [✨ Key Features](#-key-features) • [🎨 Retro Themes](#-5-retro-color-themes) • [🚀 Quick Start Guide](#-quick-start-guide) • [❓ FAQ](#-frequently-asked-questions)
 
 ---
 
-## 🖥 System Tray Quick Controls
+</div>
 
-Right-clicking the system tray icon provides instant shortcuts:
-- 🔄 **Check Now**: Perform an instant live check.
-- 🔔 **Show Notifications**: Global toggle for popup alerts.
-- ⚙️ **Settings**: Open the spacious settings window (`580×620px`).
-- ❌ **Quit**: Cleanly exit the app.
+> [!NOTE]
+> **No Google Cloud API Key Required!** Controller Notify comes with built-in **0-Quota Free Monitoring**, allowing you to watch as many channels as you want completely free of charge out of the box!
 
 ---
 
-## 🧰 Tech Stack
+## Key Features
 
-| Component | Technology |
-| :--- | :--- |
-| **Desktop Shell** | Electron 28 |
-| **Storage & State** | `electron-store` |
-| **HTTP Client** | `axios` with persistent `http.Agent` / `https.Agent` connection pool |
-| **UI Design System** | HTML5, Vanilla CSS, Segoe UI System Fonts |
-| **Testing** | Node.js native test runner (`node --test`) |
-| **Installer & Packaging** | `electron-builder` |
+### ⚡ 0-Quota Free Monitoring
+- Watch **unlimited channels** without creating Google Cloud developer projects or pasting API keys.
+- Intelligent background checking with zero impact on network pacing or quota limits.
+
+### 🎨 5 Retro Color Themes
+- Personalize your experience with custom retro themes: **Pastel Pink**, **Midnight Dark**, **Turquoise 8BitDo**, **Game Boy Classic**, and **Atomic Purple**!
+
+### 📥 1-Click Subscription CSV Import
+- Import your entire YouTube subscription list in seconds! Simply drag & drop your Google Takeout `subscriptions.csv` file into the app.
+- Support for individual streamer handles (`@VanTung`), channel URLs, or channel IDs.
+
+### 🧪 Instant Test Notification Button
+- Fine-tune your setup with a single click! Use the `🧪 Test Notification` button to test sliding physics, timing, sound, and custom mascot graphics.
+
+### 🖼️ Custom Controller Images & Mascots
+- Replace the default gamepad icon with your own image URL or local avatar image file.
+
+### 📌 4 Corner Popup Positioning & Smooth Physics
+- Pin alerts to any desktop corner: **Bottom-Right**, **Bottom-Left**, **Top-Right**, or **Top-Left**.
+- Features silky-smooth bounce-in sliding physics and configurable display timers (5s to 60s).
+
+### 🔴 Live Now Hub & Smart Watchlist Search
+- Dedicated dashboard showing all currently live channels in real time.
+- Instant search filter by channel name, handle, or ID, plus one-click status filters (`All`, `🔴 Live`, `💤 Offline`, `🔔 Enabled`, `🔕 Muted`).
+
+### 🪶 Ultra-Lightweight & Battery Friendly
+- Runs silently in your system tray using only **~35MB–45MB RAM** and **0% GPU background load**, keeping your games smooth and battery intact.
 
 ---
 
-## 🚀 Getting Started
+## 5 Retro Color Themes
+
+Customize the app UI and notifications to match your gaming desk setup:
+
+| Theme | Mood & Style | Highlight Palette |
+| :--- | :--- | :--- |
+| 🌸 **Pastel Pink** | Soft, kawaii pastel pinks & deep magenta highlights *(Default)* | Soft Pink `#fff5f9` • Magenta `#e91e63` |
+| 🌙 **Midnight Dark** | Cyberpunk dark space black with vibrant cyan & hot neon pink | Deep Black `#0f111a` • Cyan `#00f0ff` • Neon Pink `#ff007f` |
+| 🩵 **Turquoise 8BitDo** | Retro 90s handheld gamepad vibes with cool teal & orange | Mint Teal `#e0f2f1` • Dark Turquoise `#00897b` |
+| 📟 **Game Boy Classic** | Iconic 8-bit LCD dot-matrix greens & dark olive retro accents | Matrix Green `#9bbc0f` • LCD Olive `#306230` |
+| 💜 **Atomic Purple** | 90s translucent clear purple console nostalgia | Translucent Grape `#f3e5f5` • Deep Purple `#8e24aa` |
+
+---
+
+##  Quick Start Guide
+
+Getting started with Controller Notify takes under 2 minutes!
+
+### Step 1: Download & Install
+1. Go to the [**GitHub Releases**](../../releases) page.
+2. Download the latest `Controller-Notify-Setup-1.0.0.exe` installer.
+3. Double-click to install — Controller Notify will launch automatically in your Windows system tray near the clock! 🎮
+
+---
+
+### Step 2: Import Your YouTube Subscriptions
+You can add channels individually or import your whole YouTube watchlist at once:
+
+#### 💡 Option A: 1-Click Google Takeout Import (Recommended)
+1. Go to [Google Takeout](https://takeout.google.com).
+2. Deselect all, check **YouTube and YouTube Music**, click *All YouTube data included*, select **subscriptions**, and export.
+3. Open Controller Notify settings, go to **👥 Channels > ➕ Add & Import**.
+4. Drag & drop your exported `subscriptions.csv` file into the box. *Done! All your favorite streamers are now monitored!*
+
+#### 💡 Option B: Add Individual Channels
+1. Go to **👥 Channels > ➕ Add & Import**.
+2. Type or paste any creator's `@handle` (e.g., `@VanTung` or `@tarik`) or channel URL.
+3. Click **Add**.
+
+---
+
+### Step 3: Customize Popup Position & Retro Themes
+1. Open the **⚙️ General** settings tab.
+2. Select your favorite theme from the **App Color Theme** dropdown (e.g., *💜 Atomic Purple* or *📟 Game Boy Classic*).
+3. Select your preferred desktop corner from **Popup Corner** (*Bottom Right*, *Bottom Left*, *Top Right*, or *Top Left*).
+4. Enter an image URL or local file path under **Custom Controller Image** if you'd like a personalized mascot!
+5. Click **🧪 Test Notification** to preview your popup sliding onto your screen.
+6. Click **💾 Save Settings**.
+
+> [!TIP]
+> **Stream Playback Option:** You can choose whether clicking a live popup opens the stream in your default browser or directly in Controller Notify's built-in mini player window!
+
+---
+
+## System Tray Controls
+
+Controller Notify runs unobtrusively in your system tray. Right-click the 🎮 icon near your Windows clock for quick controls:
+
+- 🔄 **Check Now**: Trigger an instant check across all monitored channels.
+- 🔔 **Show Notifications**: Global toggle to pause or resume popup popups.
+- ⚙️ **Settings**: Open the spacious customization window.
+- ❌ **Quit**: Safely exit the application.
+
+---
+
+## Frequently Asked Questions
+
+<details>
+<summary><strong>Do I need a YouTube API key?</strong></summary>
+<br>
+Nope! Controller Notify works 100% out of the box with zero setup required using our free 0-quota background monitoring engine. Providing an API key is completely optional.
+</details>
+
+<details>
+<summary><strong>How do I mute alerts for a specific streamer without removing them?</strong></summary>
+<br>
+Go to <strong>👥 Channels > 📋 Monitored Channels</strong> and click the 🔔 icon next to the channel to toggle it to 🔕 (Muted). You will still see their live status in the 🔴 <strong>Live Now Hub</strong>, but popups won't disturb you!
+</details>
+
+<details>
+<summary><strong>Does this app use a lot of RAM or lag my games?</strong></summary>
+<br>
+Not at all! Controller Notify uses under 50MB RAM when minimized to tray and 0% background GPU resources. It is optimized specifically for low overhead while gaming.
+</details>
+
+<details>
+<summary><strong>Where are my channel watchlists and settings saved?</strong></summary>
+<br>
+All preferences and watchlists are stored locally on your PC in encrypted system app storage. No account registration or external tracking servers required.
+</details>
+
+---
+
+## 🧰 Developer & Building from Source
+
+For open-source contributors and developers interested in running or building Controller Notify locally:
 
 ### Prerequisites
-- Node.js 18+ installed on Windows.
+- Node.js 18+ on Windows.
 
-### Installation & Execution
+### Quick Commands
+```bash
+# Clone the repository
+git clone https://github.com/your-repo/controller-notify.git
+cd controller-notify
 
-1. **Clone & Install Dependencies**:
-   ```bash
-   git clone https://github.com/your-repo/controller-notify.git
-   cd controller-notify
-   npm install
-   ```
+# Install dependencies
+npm install
 
-2. **Run Dev Mode**:
-   ```bash
-   npm start
-   ```
+# Run app in development mode
+npm start
 
-3. **Run Automated Test Suite**:
-   ```bash
-   npm test
-   ```
+# Run unit tests (60 passing tests)
+npm test
 
-4. **Build Production Windows Installer**:
-   ```bash
-   npm run build
-   ```
-
----
-
-## 📂 Project Structure
-
+# Build production Windows executable (.exe)
+npm run build
 ```
-ControllerCutie/
-├── assets/                  # Tray icons & gamepad mascot assets
-├── docs/                    # Architecture plans, specs & walkthroughs
-├── src/
-│   ├── main/
-│   │   ├── main.js          # Electron main entry point & IPC handlers
-│   │   ├── windowManager.js # BrowserWindow physics & lazy window lifecycle
-│   │   ├── liveMonitor.js   # Multi-channel polling loop & deduplication
-│   │   ├── channelManager.js# Watchlist CRUD & CSV importer
-│   │   ├── youtube.js       # 0-quota free HTML engine & API v3 client
-│   │   └── preload.js       # Context isolation IPC bridge
-│   └── renderer/
-│       ├── settings/        # Settings window UI (HTML, CSS, JS)
-│       └── popup/           # Animated corner notification popup
-└── tests/                   # Automated unit test suite (52 tests)
-```
-
----
-
-## 📄 Documentation
-
-For deep technical architecture documents and design plans, see the [`docs/`](./docs) directory:
-- [docs/performance_and_ram_optimization_plan.md](./docs/performance_and_ram_optimization_plan.md) — Low RAM & 0% GPU Optimization plan
-- [docs/channels_redesign_plan.md](./docs/channels_redesign_plan.md) — Channels sub-tabs & search/filter design
-- [docs/walkthrough.md](./docs/walkthrough.md) — Complete feature & performance walkthrough
 
 ---
 
 ## 📜 License
 
-MIT License. Designed with 🎮 for YouTube streaming enthusiasts.
+Distributed under the **MIT License**. Crafted with 🎮 for live stream enthusiasts!
