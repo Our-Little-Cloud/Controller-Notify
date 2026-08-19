@@ -70,7 +70,18 @@ function updateTrayContextMenu() {
   const showNotifs = store.get('showNotifications', true);
   
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Check Now', click: () => liveMonitor.checkNow(true) },
+    {
+      label: 'Check Now',
+      click: () => {
+        if (Notification.isSupported()) {
+          new Notification({
+            title: 'Controller Notify',
+            body: '🔍 Checking monitored channels live status...'
+          }).show();
+        }
+        liveMonitor.checkNow(true);
+      }
+    },
     { type: 'separator' },
     {
       label: 'Show Notifications',
@@ -210,7 +221,7 @@ ipcMain.handle('get-live-status', () => {
 });
 
 ipcMain.handle('check-live-now', async () => {
-  return await liveMonitor.checkNow(false);
+  return await liveMonitor.checkNow(true);
 });
 
 ipcMain.on('open-stream-url', (_, target) => {
@@ -337,7 +348,7 @@ ipcMain.handle('remove-channel', (_, channelId) => {
   const updated = removeChannelFromList(currentChannels, channelId);
   store.set('channels', updated);
   updateTrayTooltip(false);
-  windowManager.broadcastToSettings('live-status-updated', liveMonitor.getStatus());
+  liveMonitor.checkNow(false);
   return { success: true, channels: updated };
 });
 
@@ -345,7 +356,7 @@ ipcMain.handle('toggle-channel', (_, { channelId, enabled }) => {
   const currentChannels = store.get('channels', []);
   const updated = toggleChannelEnabled(currentChannels, channelId, enabled);
   store.set('channels', updated);
-  windowManager.broadcastToSettings('live-status-updated', liveMonitor.getStatus());
+  liveMonitor.checkNow(false);
   return { success: true, channels: updated };
 });
 
@@ -383,6 +394,17 @@ ipcMain.handle('mark-history-clicked', (_, videoId) => {
   return { success: true };
 });
 
+ipcMain.handle('test-notification', (_, customData) => {
+  const streamData = customData || {
+    videoId: '0muHFBSiybw',
+    title: 'lofi hip hop radio 📚 - beats to relax/study to',
+    channelTitle: 'Lofi Girl',
+    thumbnail: 'https://i.ytimg.com/vi/0muHFBSiybw/hqdefault.jpg'
+  };
+  windowManager.createPopupWindow(streamData);
+  return { success: true };
+});
+
 ipcMain.on('close-settings', () => {
   const win = windowManager.getSettingsWindow();
   if (win) win.close();
@@ -393,18 +415,26 @@ ipcMain.on('minimize-settings', () => {
   if (win) win.minimize();
 });
 
-ipcMain.on('click-stream', () => {
+ipcMain.on('click-stream', (_, targetVideoId) => {
   const status = liveMonitor.getStatus();
-  const videoId = status.streamData?.videoId;
-  if (videoId) {
+  const videoId = targetVideoId || status.streamData?.videoId;
+  
+  if (videoId && videoId !== 'live') {
     const url = `https://www.youtube.com/watch?v=${videoId}`;
-    if (store.get('openInBrowser')) {
+    if (store.get('openInBrowser', true)) {
       shell.openExternal(url);
     } else {
       windowManager.openInAppPlayer(url);
     }
-    windowManager.animatePopupOut();
+  } else {
+    // Robust fallback: open channel URL if specific videoId was not parsed
+    const liveCh = status.liveChannels && status.liveChannels.length > 0 ? status.liveChannels[0] : null;
+    const url = liveCh?.url || liveCh?.currentStream?.url || (liveCh?.handle ? `https://www.youtube.com/${liveCh.handle.startsWith('@') ? liveCh.handle : '@' + liveCh.handle}` : null) || store.get('channelUrl');
+    if (url) {
+      shell.openExternal(url.startsWith('http') ? url : `https://www.youtube.com/${url}`);
+    }
   }
+  windowManager.animatePopupOut();
 });
 
 ipcMain.on('close-popup', () => {

@@ -167,12 +167,8 @@ async function checkLiveStatusFree(channelIdentifier) {
 
     const html = typeof response.data === 'string' ? response.data : '';
     
-    // Check if the page indicates an active live broadcast
-    const isLive = html.includes('"isLive":true') || 
-                   html.includes('"isLiveBroadcast":true') || 
-                   html.includes('"status":"LIVE"') ||
-                   html.includes('{"text":" LIVE"}') ||
-                   html.includes('{"text":"LIVE"}');
+    // Check if the page indicates an active live broadcast (exclude VOD and generic sidebar badges)
+    const isLive = html.includes('"isLiveNow":true') && html.includes('"isLive":true');
 
     if (isLive) {
       let videoId = null;

@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('api', {
   removeChannel: (channelId) => ipcRenderer.invoke('remove-channel', channelId),
   toggleChannel: (params) => ipcRenderer.invoke('toggle-channel', params),
   importSubscriptionsCsv: (csvContent) => ipcRenderer.invoke('import-subscriptions-csv', csvContent),
+  testNotification: (params) => ipcRenderer.invoke('test-notification', params),
   onNotificationSettingChanged: (callback) => ipcRenderer.on('notification-setting-changed', (_event, value) => callback(value)),
   onLiveStatusUpdated: (callback) => ipcRenderer.on('live-status-updated', (_event, data) => callback(data)),
 });

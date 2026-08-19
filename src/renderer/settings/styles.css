@@ -8,7 +8,7 @@ body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: #fafafa;
   color: #1a1a2e;
-  width: 580px;
+  width: 700px;
   height: 620px;
   overflow: hidden;
 }
@@ -579,7 +579,7 @@ body {
   background: white;
   border-radius: 14px;
   border: 1px solid #f0f0f0;
-  padding: 18px;
+  padding: 14px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
   position: relative;
   overflow: hidden;
@@ -595,13 +595,12 @@ body {
 .live-header-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   padding: 4px 12px;
   border-radius: 20px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.5px;
-  text-transform: uppercase;
   margin-bottom: 12px;
 }
 
@@ -628,7 +627,7 @@ body {
   aspect-ratio: 16 / 9;
   border-radius: 10px;
   overflow: hidden;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   background: #111;
   cursor: pointer;
 }
@@ -673,8 +672,8 @@ body {
 }
 
 .live-stream-title {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 650;
   color: #1a1a2e;
   line-height: 1.35;
   margin-bottom: 6px;
@@ -1102,12 +1101,13 @@ body {
 }
 
 .live-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
 
 .offline-streamers-summary {
+  grid-column: 1 / -1;
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px solid #f0f0f0;

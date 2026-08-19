@@ -78,7 +78,7 @@ function createWindowManager({ store } = {}) {
     }
 
     settingsWindow = new BrowserWindow({
-      width: 580,
+      width: 700,
       height: 620,
       frame: false,
       resizable: false,
@@ -137,8 +137,8 @@ function createWindowManager({ store } = {}) {
     popupWindow = new BrowserWindow({
       width: popupWidth,
       height: popupHeight,
-      x: coords.x,
-      y: coords.startY,
+      x: Math.round(coords.x),
+      y: Math.max(0, Math.round(coords.startY)),
       frame: false,
       transparent: true,
       alwaysOnTop: true,
@@ -178,24 +178,31 @@ function createWindowManager({ store } = {}) {
   function animatePopupIn(targetWin, coords) {
     if (!targetWin || targetWin.isDestroyed()) return;
 
-    const startY = coords.startY;
-    const targetY = coords.targetY;
+    const startY = Number(coords.startY);
+    const targetY = Number(coords.targetY);
     const duration = 400;
     const startTime = Date.now();
+
+    try {
+      targetWin.showInactive();
+    } catch (e) {}
 
     function step() {
       if (!targetWin || targetWin.isDestroyed()) return;
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
-      const currentY = startY + (targetY - startY) * eased;
+      const currentY = Math.round(startY + (targetY - startY) * eased);
 
-      targetWin.setPosition(coords.x, Math.round(currentY));
+      try {
+        targetWin.setPosition(Math.round(coords.x), currentY);
+      } catch (err) {
+        // Guard against Windows OS off-screen bounds rejection
+      }
 
       if (progress < 1) {
         setTimeout(step, 16);
       } else {
-        targetWin.show();
         startAutoHideTimer(targetWin, coords);
       }
     }
@@ -215,8 +222,8 @@ function createWindowManager({ store } = {}) {
     const corner = store ? store.get('popupCorner', 'bottom-right') : 'bottom-right';
     const computedCoords = coords || calculatePopupCoordinates(corner, width, height);
 
-    const startY = targetWin.getPosition()[1];
-    const exitY = computedCoords.exitY;
+    const startY = Number(targetWin.getPosition()[1]);
+    const exitY = Number(computedCoords.exitY);
     const duration = 300;
     const startTime = Date.now();
 
@@ -225,9 +232,13 @@ function createWindowManager({ store } = {}) {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
       const eased = Math.pow(progress, 3);
-      const currentY = startY + (exitY - startY) * eased;
+      const currentY = Math.round(startY + (exitY - startY) * eased);
 
-      targetWin.setPosition(computedCoords.x, Math.round(currentY));
+      try {
+        targetWin.setPosition(Math.round(computedCoords.x), currentY);
+      } catch (err) {
+        // Guard against Windows OS off-screen bounds rejection
+      }
 
       if (progress < 1) {
         setTimeout(step, 16);

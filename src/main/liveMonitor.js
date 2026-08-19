@@ -134,9 +134,8 @@ function createLiveMonitor({
         if (ch.enabled === false) continue;
 
         try {
-          // Background watchlist polling ALWAYS uses Free 0-Quota mode so API key is never burned
           const result = await checkLiveStatusFn({
-            apiKey: '',
+            apiKey,
             channelId: ch.id,
             channelUrl: ch.url || ch.handle
           });

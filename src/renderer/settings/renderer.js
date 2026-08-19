@@ -54,6 +54,73 @@ async function loadSettings() {
   }
 }
 
+const testPopupBtn = document.getElementById('testPopupBtn');
+if (testPopupBtn) {
+  testPopupBtn.addEventListener('click', async () => {
+    const customImg = controllerImageInput ? controllerImageInput.value.trim() : '';
+    if (customImg) {
+      localStorage.setItem('controllerImage', customImg);
+    } else {
+      localStorage.removeItem('controllerImage');
+    }
+
+    // Auto-save settings first so corner & autoHideDuration take effect immediately for test
+    try {
+      const currentSettings = {
+        apiKey: apiKeyInput.value.trim(),
+        channelUrl: channelUrlInput.value.trim(),
+        channelId: channelIdInput.value.trim(),
+        popupCorner: popupCornerSelect.value,
+        autoHideDuration: Math.max(1, parseInt(autoHideDurationInput.value) || 10) * 1000,
+        controllerImage: customImg,
+        showNotifications: showNotificationsCheckbox.checked,
+        openInBrowser: openInBrowserCheckbox.checked,
+        launchAtStartup: launchAtStartupCheckbox.checked
+      };
+      await window.api.saveSettings(currentSettings);
+    } catch (e) {
+      console.warn('Auto-save before test notification:', e.message);
+    }
+
+    if (window.api && typeof window.api.testNotification === 'function') {
+      await window.api.testNotification({
+        videoId: '0muHFBSiybw',
+        title: 'lofi hip hop radio 📚 - beats to relax/study to',
+        channelTitle: 'Lofi Girl',
+        thumbnail: 'https://i.ytimg.com/vi/0muHFBSiybw/hqdefault.jpg'
+      });
+    }
+  });
+}
+
+// Auto-save on corner or duration change
+async function autoSavePopupPreferences() {
+  try {
+    const currentSettings = {
+      apiKey: apiKeyInput.value.trim(),
+      channelUrl: channelUrlInput.value.trim(),
+      channelId: channelIdInput.value.trim(),
+      popupCorner: popupCornerSelect.value,
+      autoHideDuration: Math.max(1, parseInt(autoHideDurationInput.value) || 10) * 1000,
+      controllerImage: controllerImageInput ? controllerImageInput.value.trim() : '',
+      showNotifications: showNotificationsCheckbox.checked,
+      openInBrowser: openInBrowserCheckbox.checked,
+      launchAtStartup: launchAtStartupCheckbox.checked
+    };
+    await window.api.saveSettings(currentSettings);
+  } catch (e) {
+    console.error('Failed to auto-save popup preferences:', e);
+  }
+}
+
+if (popupCornerSelect) {
+  popupCornerSelect.addEventListener('change', autoSavePopupPreferences);
+}
+
+if (autoHideDurationInput) {
+  autoHideDurationInput.addEventListener('change', autoSavePopupPreferences);
+}
+
 // Listen for notification setting changed from tray menu
 if (window.api.onNotificationSettingChanged) {
   window.api.onNotificationSettingChanged((checked) => {
@@ -65,9 +132,7 @@ if (window.api.onNotificationSettingChanged) {
 if (window.api.onLiveStatusUpdated) {
   window.api.onLiveStatusUpdated((statusData) => {
     renderLiveStatus(statusData);
-    if (document.getElementById('tab-channels')?.classList.contains('active')) {
-      loadChannels();
-    }
+    loadChannels();
   });
 }
 
@@ -106,6 +171,12 @@ subTabBtns.forEach(btn => {
     if (targetPanel) {
       targetPanel.classList.add('active');
       targetPanel.style.display = 'block';
+      if (targetSubtab === 'add-import') {
+        const newChannelInput = document.getElementById('newChannelInput');
+        if (newChannelInput) {
+          setTimeout(() => newChannelInput.focus(), 50);
+        }
+      }
     }
   });
 });
@@ -489,7 +560,7 @@ function renderLiveStatus(data) {
           const startTimeStr = stream.publishedAt ? formatTime(new Date(stream.publishedAt).getTime()) : 'Recently';
           return `
             <div class="live-card is-live">
-              <div class="live-header-badge live">🔴 STREAMING NOW</div>
+              <div class="live-header-badge live">Streaming Now</div>
               
               ${stream.thumbnail ? `
                 <div class="live-thumbnail-wrapper" data-video-id="${escapeHtml(stream.videoId)}">

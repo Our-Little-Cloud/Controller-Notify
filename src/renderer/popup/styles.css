@@ -115,6 +115,10 @@ body {
   animation: bounce 2s ease-in-out infinite;
 }
 
+.controller-image.has-img::before {
+  display: none;
+}
+
 @keyframes bounce {
   0%, 100% { transform: translateY(0) rotate(-5deg); }
   50% { transform: translateY(-4px) rotate(5deg); }

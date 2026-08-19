@@ -35,3 +35,5 @@ CONTEXT.md
 .agents
 .env.example
 logs/
+
+scratch/

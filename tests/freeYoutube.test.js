@@ -22,7 +22,7 @@ describe('YouTube Free (0-Quota) Live Check Engine Tests', () => {
           </head>
           <body>
             <script>
-              var ytInitialPlayerResponse = {"status":"LIVE","isLive":true,"videoDetails":{"isLiveBroadcast":true,"videoId":"liveVid12345"}};
+              var ytInitialPlayerResponse = {"status":"LIVE","isLive":true,"videoDetails":{"isLiveNow":true,"isLiveBroadcast":true,"videoId":"liveVid12345"}};
             </script>
           </body>
         </html>
@@ -54,10 +54,9 @@ describe('YouTube Free (0-Quota) Live Check Engine Tests', () => {
             <link rel="canonical" href="https://www.youtube.com/watch?v=stream789">
             <meta property="og:title" content="Speedrunning Live">
           </head>
-          <body>{"isLive":true}</body>
+          <body>{"isLiveNow":true,"isLive":true}</body>
         </html>
       `;
-
       let requestedUrl;
       mock.method(axios, 'get', async (url) => {
         requestedUrl = url;
@@ -101,7 +100,7 @@ describe('YouTube Free (0-Quota) Live Check Engine Tests', () => {
       const mockHtml = `
         <html>
           <head><link rel="canonical" href="https://www.youtube.com/watch?v=freeVid111"></head>
-          <body>"status":"LIVE"</body>
+          <body>"status":"LIVE", "isLive":true, "isLiveNow":true</body>
         </html>
       `;
 

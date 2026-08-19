@@ -69,7 +69,10 @@
           </div>
           <div class="form-group">
             <label for="controllerImage">Custom Controller Image (optional)</label>
-            <input type="text" id="controllerImage" placeholder="Path or URL to image">
+            <div class="input-with-btn">
+              <input type="text" id="controllerImage" placeholder="Path or URL to image">
+              <button type="button" class="btn btn-secondary" id="testPopupBtn" style="white-space: nowrap;">🧪 Test Notification</button>
+            </div>
             <span class="help-text">Leave empty to use default gamepad emoji</span>
           </div>
         </div>
@@ -263,7 +266,27 @@
           </div>
         </div>
 
-        <!-- Section 3: Quick Tips -->
+        <!-- Section 3: Scan Speed & Rate Limits -->
+        <div class="guide-card">
+          <h2 class="guide-card-title" style="margin-bottom: 8px;">⏳ Scan Speed & Channel Limits</h2>
+          <p class="guide-card-subtitle">How background live checking handles large channel lists:</p>
+          <div class="guide-tips-list">
+            <div class="guide-tip-item">
+              <span class="tip-icon">🛡️</span>
+              <span><strong>Anti-Bot Pacing (300ms):</strong> The app waits 300ms between each channel check to prevent YouTube IP bans and rate-limits.</span>
+            </div>
+            <div class="guide-tip-item">
+              <span class="tip-icon">⏱️</span>
+              <span><strong>Estimated Scan Duration:</strong> Scanning 450+ channels takes roughly 4 to 5 minutes per full background sweep.</span>
+            </div>
+            <div class="guide-tip-item">
+              <span class="tip-icon">🔄</span>
+              <span><strong>Automated Background Sweeps:</strong> Scans run automatically every 20 minutes with zero impact on CPU or RAM.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 4: Quick Tips -->
         <div class="guide-card">
           <h2 class="guide-card-title" style="margin-bottom: 8px;">💡 Pro Tips & Shortcuts</h2>
           <div class="guide-tips-list">
