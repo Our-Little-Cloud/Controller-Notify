@@ -9,7 +9,13 @@ const popupCloseBtn = document.getElementById('popupCloseBtn');
 let autoHideTimer = null;
 let currentVideoId = null;
 
+const savedTheme = localStorage.getItem('appTheme') || 'pink';
+document.documentElement.setAttribute('data-theme', savedTheme);
+
 window.popupApi.onStreamData((data) => {
+  const activeTheme = data.theme || localStorage.getItem('appTheme') || 'pink';
+  document.documentElement.setAttribute('data-theme', activeTheme);
+
   if (data.videoId) currentVideoId = data.videoId;
   if (data.title) streamTitle.textContent = data.title;
   if (data.channelTitle) channelName.textContent = data.channelTitle;

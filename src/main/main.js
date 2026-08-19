@@ -51,7 +51,8 @@ const liveMonitor = createLiveMonitor({
   checkLiveStatusFn: checkLiveStatusUnified,
   onStreamLive: (streamData, manual) => {
     if (store.get('showNotifications', true)) {
-      windowManager.createPopupWindow(streamData);
+      const payload = { theme: store.get('theme', 'pink'), ...streamData };
+      windowManager.createPopupWindow(payload);
       if (manual) {
         showNotification('🎮 LIVE!', `"${streamData.title}" is now live`);
       }
@@ -395,11 +396,14 @@ ipcMain.handle('mark-history-clicked', (_, videoId) => {
 });
 
 ipcMain.handle('test-notification', (_, customData) => {
-  const streamData = customData || {
+  const activeTheme = store.get('theme', 'pink');
+  const streamData = {
     videoId: '0muHFBSiybw',
     title: 'lofi hip hop radio 📚 - beats to relax/study to',
     channelTitle: 'Lofi Girl',
-    thumbnail: 'https://i.ytimg.com/vi/0muHFBSiybw/hqdefault.jpg'
+    thumbnail: 'https://i.ytimg.com/vi/0muHFBSiybw/hqdefault.jpg',
+    theme: activeTheme,
+    ...(customData || {})
   };
   windowManager.createPopupWindow(streamData);
   return { success: true };

@@ -1,6 +1,7 @@
 const apiKeyInput = document.getElementById('apiKey');
 const channelUrlInput = document.getElementById('channelUrl');
 const channelIdInput = document.getElementById('channelId');
+const themeSelect = document.getElementById('themeSelect');
 const popupCornerSelect = document.getElementById('popupCorner');
 const autoHideDurationInput = document.getElementById('autoHideDuration');
 const controllerImageInput = document.getElementById('controllerImage');
@@ -36,6 +37,12 @@ const channelCount = document.getElementById('channelCount');
 
 let isLoading = false;
 
+function applyTheme(theme) {
+  const currentTheme = theme || 'pink';
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  localStorage.setItem('appTheme', currentTheme);
+}
+
 async function loadSettings() {
   try {
     const settings = await window.api.getSettings();
@@ -43,6 +50,10 @@ async function loadSettings() {
     apiKeyInput.value = settings.apiKey || '';
     channelUrlInput.value = settings.channelUrl || '';
     channelIdInput.value = settings.channelId || '';
+    if (themeSelect) {
+      themeSelect.value = settings.theme || 'pink';
+    }
+    applyTheme(settings.theme || 'pink');
     popupCornerSelect.value = settings.popupCorner || 'bottom-right';
     autoHideDurationInput.value = (settings.autoHideDuration || 10000) / 1000;
     controllerImageInput.value = settings.controllerImage || '';
@@ -64,12 +75,15 @@ if (testPopupBtn) {
       localStorage.removeItem('controllerImage');
     }
 
-    // Auto-save settings first so corner & autoHideDuration take effect immediately for test
+    // Auto-save settings first so corner, theme & autoHideDuration take effect immediately for test
     try {
+      const selectedTheme = themeSelect ? themeSelect.value : 'pink';
+      applyTheme(selectedTheme);
       const currentSettings = {
         apiKey: apiKeyInput.value.trim(),
         channelUrl: channelUrlInput.value.trim(),
         channelId: channelIdInput.value.trim(),
+        theme: selectedTheme,
         popupCorner: popupCornerSelect.value,
         autoHideDuration: Math.max(1, parseInt(autoHideDurationInput.value) || 10) * 1000,
         controllerImage: customImg,
@@ -93,13 +107,16 @@ if (testPopupBtn) {
   });
 }
 
-// Auto-save on corner or duration change
+// Auto-save on theme, corner or duration change
 async function autoSavePopupPreferences() {
   try {
+    const selectedTheme = themeSelect ? themeSelect.value : 'pink';
+    applyTheme(selectedTheme);
     const currentSettings = {
       apiKey: apiKeyInput.value.trim(),
       channelUrl: channelUrlInput.value.trim(),
       channelId: channelIdInput.value.trim(),
+      theme: selectedTheme,
       popupCorner: popupCornerSelect.value,
       autoHideDuration: Math.max(1, parseInt(autoHideDurationInput.value) || 10) * 1000,
       controllerImage: controllerImageInput ? controllerImageInput.value.trim() : '',
@@ -111,6 +128,10 @@ async function autoSavePopupPreferences() {
   } catch (e) {
     console.error('Failed to auto-save popup preferences:', e);
   }
+}
+
+if (themeSelect) {
+  themeSelect.addEventListener('change', autoSavePopupPreferences);
 }
 
 if (popupCornerSelect) {
@@ -745,6 +766,7 @@ form.addEventListener('submit', async (e) => {
     apiKey: apiKeyInput.value.trim(),
     channelUrl: channelUrlInput.value.trim(),
     channelId: channelIdInput.value.trim(),
+    theme: themeSelect ? themeSelect.value : 'pink',
     popupCorner: popupCornerSelect.value,
     autoHideDuration: parseInt(autoHideDurationInput.value) * 1000,
     controllerImage: controllerImageInput.value.trim(),
