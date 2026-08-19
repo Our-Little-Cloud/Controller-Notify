@@ -249,9 +249,21 @@ ipcMain.on('open-stream-url', (_, target) => {
   }
 });
 
-ipcMain.on('open-external-url', (_, url) => {
-  if (url && typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+ipcMain.on('open-external-url', (_, rawUrl) => {
+  if (!rawUrl || typeof rawUrl !== 'string') return;
+  let url = rawUrl.trim();
+  if (!url) return;
+
+  if (url.startsWith('https://') || url.startsWith('http://')) {
     shell.openExternal(url);
+  } else if (url.startsWith('@')) {
+    shell.openExternal(`https://www.youtube.com/${url}`);
+  } else if (url.startsWith('UC') && url.length === 24) {
+    shell.openExternal(`https://www.youtube.com/channel/${url}`);
+  } else if (url.startsWith('youtube.com') || url.startsWith('www.youtube.com')) {
+    shell.openExternal(`https://${url}`);
+  } else {
+    shell.openExternal(`https://www.youtube.com/@${url.replace(/^@/, '')}`);
   }
 });
 

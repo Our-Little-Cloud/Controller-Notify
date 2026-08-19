@@ -315,6 +315,33 @@ function filterAndRenderChannels() {
   renderChannelsList(filtered);
 }
 
+function formatChannelUrl(c) {
+  if (!c) return 'https://www.youtube.com';
+  const url = (c.url || '').trim();
+  const handle = (c.handle || '').trim();
+  const id = (c.id || '').trim();
+
+  if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+    return url;
+  }
+  if (url && url.startsWith('@')) {
+    return `https://www.youtube.com/${url}`;
+  }
+  if (url && (url.startsWith('youtube.com') || url.startsWith('www.youtube.com'))) {
+    return `https://${url}`;
+  }
+  if (handle) {
+    return `https://www.youtube.com/${handle.startsWith('@') ? handle : '@' + handle}`;
+  }
+  if (id && id.startsWith('UC') && id.length === 24) {
+    return `https://www.youtube.com/channel/${id}`;
+  }
+  if (id) {
+    return `https://www.youtube.com/${id.startsWith('@') ? id : '@' + id}`;
+  }
+  return 'https://www.youtube.com';
+}
+
 function renderChannelsList(channels) {
   if (!channelsList) return;
 
@@ -338,10 +365,10 @@ function renderChannelsList(channels) {
   }
 
   channelsList.innerHTML = channels.map(c => {
-    const channelUrl = c.url || (c.handle ? `https://www.youtube.com/${c.handle.startsWith('@') ? c.handle : '@' + c.handle}` : `https://www.youtube.com/channel/${c.id}`);
+    const channelUrl = formatChannelUrl(c);
     return `
-    <div class="channel-card ${c.enabled === false ? 'disabled' : ''}" data-channel-id="${escapeHtml(c.id)}">
-      <div class="channel-card-left" data-action="open-url" data-url="${escapeHtml(channelUrl)}" title="Click to open channel in web browser">
+    <div class="channel-card ${c.enabled === false ? 'disabled' : ''}" data-channel-id="${escapeHtml(c.id)}" data-channel-url="${escapeHtml(channelUrl)}" title="Click to open channel in browser">
+      <div class="channel-card-left" data-action="open-url" data-url="${escapeHtml(channelUrl)}">
         <div class="channel-icon-badge">${c.isLive ? '🔴' : '🎮'}</div>
         <div class="channel-card-info">
           <div class="channel-card-name">
@@ -369,17 +396,17 @@ function renderChannelsList(channels) {
   // Attach action listeners
   channelsList.querySelectorAll('.channel-card').forEach(card => {
     const id = card.dataset.channelId;
+    const url = card.dataset.channelUrl;
 
-    // Open channel URL in default web browser
-    card.querySelectorAll('[data-action="open-url"]').forEach(el => {
-      el.addEventListener('click', (e) => {
-        // Prevent toggle/delete buttons inside actions from triggering card click
-        if (e.target.closest('[data-action="toggle"]') || e.target.closest('[data-action="delete"]')) return;
-        const url = el.dataset.url;
-        if (url && window.api && typeof window.api.openExternalUrl === 'function') {
-          window.api.openExternalUrl(url);
-        }
-      });
+    // Card click & chain icon click: open in browser
+    card.addEventListener('click', (e) => {
+      // If clicked toggle or delete buttons, don't open URL
+      if (e.target.closest('[data-action="toggle"]') || e.target.closest('[data-action="delete"]')) {
+        return;
+      }
+      if (url && window.api && typeof window.api.openExternalUrl === 'function') {
+        window.api.openExternalUrl(url);
+      }
     });
 
     const toggleBtn = card.querySelector('[data-action="toggle"]');
@@ -387,7 +414,7 @@ function renderChannelsList(channels) {
       toggleBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         try {
-          const channel = allChannels.find(c => c.id === id);
+          const channel = allChannels.find(c => String(c.id) === String(id));
           const newEnabled = channel ? !channel.enabled : false;
           await window.api.toggleChannel({ channelId: id, enabled: newEnabled });
         } catch (err) {

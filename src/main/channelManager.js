@@ -26,12 +26,16 @@ function normalizeChannel(rawChannel) {
     title = handle ? handle.replace(/^@/, '') : id || 'Streamer';
   }
 
-  // If url is missing, construct it
-  if (!url) {
+  // If url is missing or not an http URL, construct it
+  if (!url || !url.startsWith('http')) {
     if (handle) {
       url = `https://www.youtube.com/${handle.startsWith('@') ? handle : '@' + handle}`;
-    } else if (id) {
+    } else if (id && id.startsWith('UC') && id.length === 24) {
       url = `https://www.youtube.com/channel/${id}`;
+    } else if (url && url.startsWith('@')) {
+      url = `https://www.youtube.com/${url}`;
+    } else if (id) {
+      url = id.startsWith('@') ? `https://www.youtube.com/${id}` : `https://www.youtube.com/@${id}`;
     }
   }
 
