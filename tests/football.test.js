@@ -135,6 +135,38 @@ describe('Football Providers Tests', () => {
       const provider = createFdProvider({ apiKey: 'k', fetchFn, sleepFn: () => Promise.resolve() });
       await assert.rejects(() => provider.fetchSchedule('PL', 'a', 'b'), /403/);
     });
+
+    it('fetches a favorite team fixtures across all its competitions', async () => {
+      let captured;
+      const fetchFn = async (url, opts) => {
+        captured = { url, opts };
+        return {
+          ok: true, status: 200,
+          headers: null,
+          json: async () => ({
+            matches: [{
+              id: 900001,
+              utcDate: '2026-08-22T19:00:00Z',
+              status: 'IN_PLAY',
+              minute: "34'",
+              homeTeam: { id: 529, name: 'Barcelona', crest: '' },
+              awayTeam: { id: 5013, name: 'Chelsea', crest: '' },
+              competition: { code: 'CL', name: 'Champions League' },
+              score: { fullTime: { home: 1, away: 0 } }
+            }]
+          })
+        };
+      };
+      const provider = createFdProvider({ apiKey: 'k', fetchFn, sleepFn: () => Promise.resolve() });
+      const fixtures = await provider.fetchTeamFixtures('529', '2026-08-21', '2026-08-28');
+
+      assert.ok(captured.url.includes('/v4/teams/529/matches'));
+      assert.ok(captured.url.includes('dateFrom=2026-08-21'));
+      assert.equal(captured.opts.headers['X-Auth-Token'], 'k');
+      assert.equal(fixtures.length, 1);
+      assert.equal(fixtures[0].status, 'live');
+      assert.equal(fixtures[0].competition.code, 'CL');
+    });
   });
 
   describe('ESPN Live Boost provider', () => {

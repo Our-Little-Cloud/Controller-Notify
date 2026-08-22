@@ -134,4 +134,57 @@ describe('Football Monitor Tests', () => {
     await mon.checkWatch(); // must not throw
     assert.ok(true);
   });
+
+  it('injects keyless favorite matches from ESPN into the schedule cache (cross-competition)', async () => {
+    const store = memoryStore(); // no cached fixtures at all
+    const espn = {
+      fetchLiveState: async () => [
+        { eventId: 'ucl1', kickoffUtc: new Date(KICKOFF).toISOString(), homeName: 'Barcelona', awayName: 'Bayern Munich', state: 'in', completed: false, minute: "34'", scoreHome: 1, scoreAway: 0 }
+      ]
+    };
+    const mon = createFootballMonitor({
+      store,
+      favoriteTeams: [
+        { id: '', name: 'Barcelona', crest: '', competitionCode: 'PD' },
+        { id: '', name: 'Bayern Munich', crest: '', competitionCode: 'BL1' }
+      ],
+      pinnedFixtures: [], leagues: ['BL1'], reminderMinutes: 15, liveBoost: true,
+      espnProvider: espn, fdProvider: null,
+      nowFn: () => KICKOFF + 30 * 60000,
+      onFixtureEvent: () => {},
+      onError: () => {}
+    });
+
+    await mon.checkWatch();
+    const cache = store.get('footballFixtures', []);
+    assert.equal(cache.length, 1);
+    assert.equal(cache[0].homeTeam.name, 'Barcelona');
+    assert.equal(cache[0].awayTeam.name, 'Bayern Munich');
+    assert.equal(cache[0].status, 'live');
+    assert.equal(cache[0].competition.code, ''); // slug unknown without registry hit — acceptable v1
+    assert.equal(cache[0].score.home, 1);
+  });
+
+  it('sweep merges favorite-team fixtures fetched per team id', async () => {
+    const store = memoryStore({ footballFavoriteTeams: [{ id: '529', name: 'Barcelona', crest: '', competitionCode: 'PD' }] });
+    let calls = [];
+    const fd = {
+      fetchSchedule: async (code) => { calls.push(`league:${code}`); return []; },
+      fetchTeamFixtures: async (teamId) => { calls.push(`team:${teamId}`); return [makeFixture('tfx', { status: 'scheduled' })]; }
+    };
+    const mon = createFootballMonitor({
+      store,
+      favoriteTeams: [{ id: '529', name: 'Barcelona', crest: '', competitionCode: 'PD' }],
+      pinnedFixtures: [], leagues: ['PL'], reminderMinutes: 15, liveBoost: false,
+      espnProvider: null, fdProvider: fd,
+      nowFn: () => Date.now(), paceMs: 0,
+      onFixtureEvent: () => {}, onError: () => {}
+    });
+    await mon.checkSweep();
+    assert.ok(calls.includes('league:PL'));
+    assert.ok(calls.includes('team:529'));
+    const cache = store.get('footballFixtures', []);
+    assert.equal(cache.length, 1);
+    assert.equal(cache[0].id, 'tfx');
+  });
 });

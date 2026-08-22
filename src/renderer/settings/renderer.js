@@ -1222,7 +1222,7 @@ function renderFixtures() {
           <span class="fixture-team away">${crestHtml(f.awayTeam)} ${escapeHtml(f.awayTeam.name)}</span>
         </div>
         ${f.bigMatch ? SVG_ICONS.flame : ''}
-        <span class="comp-chip">${escapeHtml(LEAGUE_LABELS[f.competition.code] || f.competition.code)}</span>
+        ${(LEAGUE_LABELS[f.competition.code] || f.competition.code) ? `<span class="comp-chip">${escapeHtml(LEAGUE_LABELS[f.competition.code] || f.competition.code)}</span>` : ''}
         <button type="button" class="star-btn ${isPinned(f) ? 'pinned' : ''}" data-pin-id="${escapeHtml(f.id)}" title="Pin fixture">
           ${isPinned(f) ? SVG_ICONS.starFilled : SVG_ICONS.star}
         </button>

@@ -102,25 +102,43 @@ function createFdProvider({
     return res;
   }
 
-  async function fetchSchedule(leagueCode, dateFrom, dateTo) {
-    const url = `${FD_BASE}/competitions/${encodeURIComponent(leagueCode)}/matches` +
-      `?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`;
-    const opts = { headers: { 'X-Auth-Token': apiKey } };
-
-    let res = await requestOnce(url, opts);
+  async function apiGet(url) {
+    let res = await requestOnce(url, { headers: { 'X-Auth-Token': apiKey } });
 
     // Honor the reset window on throttling responses, then retry once
     if (!res.ok && res.status === 429 && maxRetries > 0) {
       const reset = readHeader(res && res.headers, 'x-requestcounter-reset');
       await sleepFn(((reset != null ? reset : 60) + 1) * 1000);
-      res = await requestOnce(url, opts);
+      res = await requestOnce(url, optsHeaders());
     }
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(`football-data.org ${leagueCode} failed with HTTP ${res.status}: ${body.message || ''}`);
+      throw new Error(`football-data.org request failed with HTTP ${res.status}: ${body.message || ''} (${url})`);
     }
-    const data = await res.json();
+    return res.json();
+  }
+
+  function optsHeaders() {
+    return { headers: { 'X-Auth-Token': apiKey } };
+  }
+
+  async function fetchSchedule(leagueCode, dateFrom, dateTo) {
+    const url = `${FD_BASE}/competitions/${encodeURIComponent(leagueCode)}/matches` +
+      `?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`;
+    const data = await apiGet(url);
+    return (data.matches || []).map(normalizeFixture).filter(Boolean);
+  }
+
+  /**
+   * All fixtures of a specific team across ALL its competitions (league,
+   * cups, Europe) within the date window — used so Favorite Teams surface
+   * matches even outside the enabled league filters.
+   */
+  async function fetchTeamFixtures(teamId, dateFrom, dateTo) {
+    const url = `${FD_BASE}/teams/${encodeURIComponent(teamId)}/matches` +
+      `?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`;
+    const data = await apiGet(url);
     return (data.matches || []).map(normalizeFixture).filter(Boolean);
   }
 
@@ -128,7 +146,7 @@ function createFdProvider({
     return { lastAvailable, lastResetSeconds };
   }
 
-  return { name: 'football-data.org', fetchSchedule, getThrottleState };
+  return { name: 'football-data.org', fetchSchedule, fetchTeamFixtures, getThrottleState };
 }
 
 /**
@@ -166,6 +184,7 @@ function createEspnProvider({ fetchFn, onError = () => {} } = {}) {
       states.push({
         eventId: event.id,
         kickoffUtc: event.date || null,
+        competitionCode: code || '',
         homeName: home.team && home.team.displayName || '',
         awayName: away.team && away.team.displayName || '',
         state: status.state || 'pre',

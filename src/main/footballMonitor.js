@@ -215,7 +215,7 @@ function createFootballMonitor({
               id: pseudoId,
               homeName: s.homeName,
               awayName: s.awayName,
-              competitionCode: '',
+              competitionCode: s.competitionCode || '',
               kickoffUtc: s.kickoffUtc || null,
               kickoffMs: s.kickoffUtc ? Date.parse(s.kickoffUtc) : null,
               status: statusFromEspnState(s.state),
@@ -227,6 +227,7 @@ function createFootballMonitor({
             };
             targets.set(pseudoId, target);
             statuses.set(pseudoId, target.status);
+            upsertPseudoFixture(target);
           }
         }
       } catch (err) {
@@ -242,6 +243,36 @@ function createFootballMonitor({
     await processTargets([...targets.values()], statuses);
     onStatusUpdate(getStatus());
     return getStatus();
+  }
+
+  /**
+   * Keyless favorites: write ESPN-discovered favorite matches into the
+   * fixtures cache so the Matches tab shows them even though their
+   * competition was never swept. Pruned naturally by sweep cutoff.
+   */
+  function upsertPseudoFixture(target) {
+    const fixtures = store.get(FIXTURES_KEY, []);
+    const idx = fixtures.findIndex(f => f.id === target.id);
+    const entry = {
+      id: target.id,
+      kickoffUtc: target.kickoffUtc,
+      status: target.status,
+      minute: target.minute != null ? target.minute : null,
+      homeTeam: { id: '', name: target.homeName, crest: '' },
+      awayTeam: { id: '', name: target.awayName, crest: '' },
+      competition: { code: target.competitionCode || '', name: target.competitionCode || 'LIVE' },
+      score: {
+        home: target.scoreHome != null ? target.scoreHome : null,
+        away: target.scoreAway != null ? target.scoreAway : null
+      },
+      pseudo: true
+    };
+    if (idx >= 0) {
+      fixtures[idx] = { ...fixtures[idx], ...entry };
+    } else {
+      fixtures.push(entry);
+    }
+    store.set(FIXTURES_KEY, fixtures);
   }
 
   async function fdFallback(watchedCached, targets) {
@@ -302,6 +333,22 @@ function createFootballMonitor({
         onError(err, code);
       }
       if (paceMs > 0 && i < leagues.length - 1) {
+        await new Promise(res => setTimeout(res, paceMs));
+      }
+    }
+
+    // Favorite teams: fetch their fixtures across ALL competitions so
+    // matches outside enabled leagues still surface (plan Q10).
+    const keyedFavorites = favoriteTeams.filter(t => t.id && /^\d+$/.test(String(t.id)));
+    for (let i = 0; i < keyedFavorites.length; i++) {
+      try {
+        const teamFixtures = await fdProvider.fetchTeamFixtures(keyedFavorites[i].id, from, to);
+        for (const f of teamFixtures) merged.set(f.id, f);
+      } catch (err) {
+        err.message = `football-data.org team ${keyedFavorites[i].id} fixtures failed: ${err.message}`;
+        onError(err, keyedFavorites[i].id);
+      }
+      if (paceMs > 0 && i < keyedFavorites.length - 1) {
         await new Promise(res => setTimeout(res, paceMs));
       }
     }
