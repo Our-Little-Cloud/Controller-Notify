@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 const { checkLiveStatus, getChannelIdFromUrl, checkLiveStatusFree, checkLiveStatusUnified } = require('./youtube');
@@ -147,13 +147,10 @@ function guardFootball(handlerFn) {
 const liveMonitor = createLiveMonitor({
   store,
   checkLiveStatusFn: checkLiveStatusUnified,
-  onStreamLive: (streamData, manual) => {
+  onStreamLive: (streamData) => {
     if (store.get('showNotifications', true)) {
       const payload = { theme: store.get('theme', 'pink'), ...streamData };
       windowManager.createPopupWindow(payload);
-      if (manual) {
-        showNotification('🎮 LIVE!', `"${streamData.title}" is now live`);
-      }
     }
   },
   onStatusUpdate: (statusSnapshot) => {
@@ -171,14 +168,17 @@ function updateTrayContextMenu() {
   const template = [
     {
       label: 'Check Now',
-      click: () => {
-        if (Notification.isSupported()) {
-          new Notification({
-            title: 'Controller Notify',
-            body: '🔍 Checking monitored channels live status...'
-          }).show();
+      click: async () => {
+        // Corner-popup feedback instead of OS notifications (fully deprecated)
+        const status = await Promise.resolve(liveMonitor.checkNow(true));
+        const liveCount = (status.liveChannels || []).length;
+        if (liveCount === 0) {
+          windowManager.createPopupWindow({
+            theme: store.get('theme', 'pink'),
+            title: 'Nobody is live right now',
+            channelTitle: `Checked ${(status.channels || []).length} channels`
+          });
         }
-        liveMonitor.checkNow(true);
       }
     },
     { type: 'separator' },
@@ -192,25 +192,6 @@ function updateTrayContextMenu() {
       }
     }
   ];
-
-  // Football "Next:" line (Q12)
-  if (isFootballEnabled() && footballMonitor) {
-    try {
-      const fb = footballMonitor.getStatus();
-      if (fb.nextWatched) {
-        const f = fb.nextWatched;
-        const time = new Date(f.kickoffUtc).toLocaleString([], {
-          weekday: 'short', hour: '2-digit', minute: '2-digit'
-        });
-        template.push({ label: `Next: ${f.homeTeam.name} vs ${f.awayTeam.name} · ${time}`, enabled: false });
-      } else if (fb.liveWatched && fb.liveWatched.length > 0) {
-        const m = fb.liveWatched[0];
-        template.push({ label: `⚽ LIVE: ${m.homeTeam.name} vs ${m.awayTeam.name}`, enabled: false });
-      }
-    } catch (err) {
-      console.error('[Tray] football status error:', err.stack || err);
-    }
-  }
 
   template.push(
     { label: 'Settings', click: () => windowManager.createSettingsWindow() },
@@ -270,12 +251,6 @@ function updateTrayIcon(isLive) {
   const iconPath = path.join(__dirname, '../../assets/', iconName);
   const trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
   tray.setImage(trayIcon);
-}
-
-function showNotification(title, body) {
-  if (Notification.isSupported()) {
-    new Notification({ title, body, silent: true }).show();
-  }
 }
 
 const gotTheLock = app.requestSingleInstanceLock();

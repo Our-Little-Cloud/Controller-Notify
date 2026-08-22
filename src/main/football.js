@@ -32,8 +32,21 @@ function espnSlugFor(code) {
 
 /**
  * Primary provider — football-data.org v4.
+ * Throttling follows the documented policy (docs.football-data.org/general/v4/policies.html):
+ * free plan = 10 requests/minute. We combine a polite fixed pacing gap with
+ * ADAPTIVE gating driven by the official response headers (docs.football-data.org
+ * /general/v4/lookup_tables.html): X-RequestsAvailable (remaining requests) and
+ * X-RequestCounter-Reset (seconds left to reset the counter), and honor the
+ * reset window on 429 responses.
  */
-function createFdProvider({ apiKey, fetchFn } = {}) {
+function createFdProvider({
+  apiKey,
+  fetchFn,
+  sleepFn = (ms) => new Promise(resolve => setTimeout(resolve, ms)),
+  minRequestGapMs = 7000,
+  minRequestsAvailable = 2,
+  maxRetries = 1
+} = {}) {
   if (!apiKey) {
     throw new Error('football-data.org provider requires an API key');
   }
@@ -41,16 +54,68 @@ function createFdProvider({ apiKey, fetchFn } = {}) {
     throw new Error('fetchFn is required');
   }
 
+  let lastRequestAt = 0;
+  let lastAvailable = null;
+  let lastResetSeconds = null;
+
+  function readHeader(headers, name) {
+    if (!headers || typeof headers.get !== 'function') return null;
+    const raw = headers.get(name);
+    if (raw == null) return null;
+    const parsed = parseInt(raw, 10);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  function updateFromHeaders(headers) {
+    const available = readHeader(headers, 'x-requestsavailable');
+    const reset = readHeader(headers, 'x-requestcounter-reset');
+    if (available != null) lastAvailable = available;
+    if (reset != null) lastResetSeconds = reset;
+    return { available: lastAvailable, reset: lastResetSeconds };
+  }
+
+  async function throttleGate() {
+    // 1) Polite fixed pacing between consecutive requests
+    const sinceLast = Date.now() - lastRequestAt;
+    if (lastRequestAt > 0 && sinceLast < minRequestGapMs) {
+      await sleepFn(minRequestGapMs - sinceLast);
+    }
+    // 2) Adaptive wait: remaining requests at/below the safety floor ->
+    //    sleep out the documented reset window before touching the API again
+    if (lastAvailable != null && lastAvailable <= minRequestsAvailable && lastResetSeconds != null) {
+      await sleepFn((lastResetSeconds + 1) * 1000);
+      lastAvailable = null; // consumed; unknown until the next response
+    }
+    lastRequestAt = Date.now();
+  }
+
+  async function requestOnce(url, opts) {
+    await throttleGate();
+    let res;
+    try {
+      res = await fetchFn(url, opts);
+    } catch (err) {
+      err.message = `football-data.org network error for ${url}: ${err.message}`;
+      throw err;
+    }
+    updateFromHeaders(res && res.headers);
+    return res;
+  }
+
   async function fetchSchedule(leagueCode, dateFrom, dateTo) {
     const url = `${FD_BASE}/competitions/${encodeURIComponent(leagueCode)}/matches` +
       `?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`;
-    let res;
-    try {
-      res = await fetchFn(url, { headers: { 'X-Auth-Token': apiKey } });
-    } catch (err) {
-      err.message = `football-data.org network error for ${leagueCode}: ${err.message}`;
-      throw err;
+    const opts = { headers: { 'X-Auth-Token': apiKey } };
+
+    let res = await requestOnce(url, opts);
+
+    // Honor the reset window on throttling responses, then retry once
+    if (!res.ok && res.status === 429 && maxRetries > 0) {
+      const reset = readHeader(res && res.headers, 'x-requestcounter-reset');
+      await sleepFn(((reset != null ? reset : 60) + 1) * 1000);
+      res = await requestOnce(url, opts);
     }
+
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(`football-data.org ${leagueCode} failed with HTTP ${res.status}: ${body.message || ''}`);
@@ -59,7 +124,11 @@ function createFdProvider({ apiKey, fetchFn } = {}) {
     return (data.matches || []).map(normalizeFixture).filter(Boolean);
   }
 
-  return { name: 'football-data.org', fetchSchedule };
+  function getThrottleState() {
+    return { lastAvailable, lastResetSeconds };
+  }
+
+  return { name: 'football-data.org', fetchSchedule, getThrottleState };
 }
 
 /**

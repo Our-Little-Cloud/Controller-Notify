@@ -6,6 +6,10 @@ const {
   createEspnProvider
 } = require('../src/main/football');
 
+function headersLike(map) {
+  return { get: (name) => map[String(name).toLowerCase()] ?? null };
+}
+
 describe('Football Providers Tests', () => {
   describe('League registry', () => {
     it('covers all 12 free competitions with espn slugs', () => {
@@ -51,14 +55,85 @@ describe('Football Providers Tests', () => {
       assert.equal(fixtures[0].status, 'scheduled');
     });
 
-    it('throws with HTTP status context on API error (never swallowed)', async () => {
-      const fetchFn = async () => ({ ok: false, status: 429, json: async () => ({ message: 'rate limited' }) });
-      const provider = createFdProvider({ apiKey: 'k', fetchFn });
+    it('retries a 429 without reset header once (bounded default backoff), then throws with status context', async () => {
+      const delays = [];
+      const sleepFn = (ms) => { delays.push(ms); return Promise.resolve(); };
+      let calls = 0;
+      const fetchFn = async () => {
+        calls++;
+        return { ok: false, status: 429, headers: null, json: async () => ({ message: 'rate limited' }) };
+      };
+      const provider = createFdProvider({ apiKey: 'k', fetchFn, sleepFn });
       await assert.rejects(() => provider.fetchSchedule('PL', 'a', 'b'), /429/);
+      assert.equal(calls, 2);
+      assert.ok(delays.some(d => d >= 60000), 'default bounded backoff of ~60s applied when no reset header');
     });
 
     it('requires an api key at construction', () => {
       assert.throws(() => createFdProvider({ fetchFn: async () => ({}) }));
+    });
+
+    it('tracks X-RequestsAvailable / X-RequestCounter-Reset and waits for the reset window near the limit', async () => {
+      const delays = [];
+      const sleepFn = (ms) => { delays.push(ms); return Promise.resolve(); };
+      let calls = 0;
+      const fetchFn = async () => {
+        calls++;
+        if (calls === 1) {
+          // First response reports only 1 remaining request, window resets in 12s
+          return {
+            ok: true, status: 200,
+            headers: headersLike({ 'x-requestsavailable': '1', 'x-requestcounter-reset': '12' }),
+            json: async () => ({ matches: [] })
+          };
+        }
+        return {
+          ok: true, status: 200,
+          headers: headersLike({ 'x-requestsavailable': '9', 'x-requestcounter-reset': '60' }),
+          json: async () => ({ matches: [] })
+        };
+      };
+      const provider = createFdProvider({ apiKey: 'k', fetchFn, sleepFn });
+
+      await provider.fetchSchedule('PL', 'a', 'b');
+      await provider.fetchSchedule('PL', 'a', 'b');
+
+      assert.equal(calls, 2);
+      assert.ok(delays.some(d => d >= 12000), `expected a >=12s adaptive wait, got ${JSON.stringify(delays)}`);
+      assert.equal(provider.getThrottleState().lastAvailable, 9);
+    });
+
+    it('retries once after honoring X-RequestCounter-Reset on a 429', async () => {
+      const delays = [];
+      const sleepFn = (ms) => { delays.push(ms); return Promise.resolve(); };
+      let calls = 0;
+      const fetchFn = async () => {
+        calls++;
+        if (calls === 1) {
+          return {
+            ok: false, status: 429,
+            headers: headersLike({ 'x-requestcounter-reset': '8' }),
+            json: async () => ({ message: 'too many requests' })
+          };
+        }
+        return {
+          ok: true, status: 200,
+          headers: headersLike({ 'x-requestcounter': '2', 'x-requestcounter-reset': '55' }),
+          json: async () => ({ matches: [{ id: 1, utcDate: '2026-08-22T16:30:00Z', status: 'TIMED', homeTeam: { name: 'A' }, awayTeam: { name: 'B' }, competition: {} }] })
+        };
+      };
+      const provider = createFdProvider({ apiKey: 'k', fetchFn, sleepFn });
+      const fixtures = await provider.fetchSchedule('PL', 'a', 'b');
+
+      assert.equal(calls, 2);
+      assert.ok(delays.some(d => d >= 8000), `expected an >=8s reset wait, got ${JSON.stringify(delays)}`);
+      assert.equal(fixtures.length, 1);
+    });
+
+    it('still throws with status context on non-429 errors', async () => {
+      const fetchFn = async () => ({ ok: false, status: 403, headers: null, json: async () => ({ message: 'nope' }) });
+      const provider = createFdProvider({ apiKey: 'k', fetchFn, sleepFn: () => Promise.resolve() });
+      await assert.rejects(() => provider.fetchSchedule('PL', 'a', 'b'), /403/);
     });
   });
 

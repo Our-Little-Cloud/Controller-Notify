@@ -10,7 +10,10 @@ const STATUS_MAP = {
   IN_PLAY: 'live',
   LIVE: 'live',
   PAUSED: 'live',
+  EXTRA_TIME: 'live',
+  PENALTY_SHOOTOUT: 'live',
   FINISHED: 'finished',
+  AWARDED: 'finished',
   POSTPONED: 'scheduled',
   SUSPENDED: 'live'
 };
