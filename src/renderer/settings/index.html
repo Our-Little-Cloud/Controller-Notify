@@ -24,6 +24,7 @@
         <button class="tab-btn active" role="tab" data-tab="general" aria-selected="true">⚙️ General</button>
         <button class="tab-btn" role="tab" data-tab="channels" aria-selected="false">👥 Channels</button>
         <button class="tab-btn" role="tab" data-tab="live" aria-selected="false">🔴 Live Now</button>
+        <button class="tab-btn" role="tab" data-tab="football" aria-selected="false">⚽ Football</button>
         <button class="tab-btn" role="tab" data-tab="history" aria-selected="false">📜 History</button>
         <button class="tab-btn" role="tab" data-tab="guide" aria-selected="false">📖 Guide</button>
       </div>
@@ -108,6 +109,13 @@
               <input type="checkbox" id="launchAtStartup">
               <span class="checkmark"></span>
               Launch at Windows startup
+            </label>
+          </div>
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="footballEnabled">
+              <span class="checkmark"></span>
+              Show Football features (match notifications &amp; schedule)
             </label>
           </div>
         </div>
@@ -200,6 +208,84 @@
       </div>
       <div id="liveStatusContainer" class="live-status-container">
         <div class="live-status-loading">Loading channel status...</div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-football" role="tabpanel" aria-hidden="true">
+      <div class="sub-tabs-bar" role="tablist">
+        <button type="button" class="sub-tab-btn active" data-subtab="fb-matches" role="tab" aria-selected="true">📅 Matches</button>
+        <button type="button" class="sub-tab-btn" data-subtab="fb-favorites" role="tab" aria-selected="false">⭐ Favorites &amp; Setup</button>
+      </div>
+
+      <!-- Sub-Tab 1: Matches -->
+      <div class="sub-tab-panel active" id="subtab-fb-matches" role="tabpanel">
+        <div class="section">
+          <div class="monitored-header">
+            <h2 class="section-title" style="margin-bottom: 0;">📅 Fixture Schedule (Next 7 Days)</h2>
+            <button type="button" class="btn btn-secondary btn-sm" id="refreshFixturesBtn" title="Fetch latest schedule">🔄 Refresh</button>
+          </div>
+          <div class="filter-toolbar" style="flex-direction: column; align-items: stretch; gap: 8px;">
+            <div class="league-chips" id="leagueChips"></div>
+            <div class="filter-pills" id="fixtureFilterPills">
+              <button type="button" class="fixture-pill active" data-fixture-filter="all">All</button>
+              <button type="button" class="fixture-pill" data-fixture-filter="favorites">Favorites</button>
+              <button type="button" class="fixture-pill" data-fixture-filter="live">Live</button>
+              <button type="button" class="fixture-pill" data-fixture-filter="finished">Finished</button>
+            </div>
+          </div>
+          <div id="footballBanner" class="fb-banner" style="display: none;"></div>
+          <div id="fixturesList" class="fixtures-list">
+            <div class="fb-empty">Loading fixtures...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sub-Tab 2: Favorites & Setup -->
+      <div class="sub-tab-panel" id="subtab-fb-favorites" role="tabpanel" style="display: none;">
+        <div class="section">
+          <h2 class="section-title">⭐ Favorite Teams</h2>
+          <div class="league-chips" id="favLeagueChips"></div>
+          <div class="input-with-btn" style="margin-top: 8px;">
+            <input type="text" id="teamSearchInput" placeholder="Search a team to favorite..." autocomplete="off">
+            <button type="button" class="btn btn-secondary" id="teamSearchBtn">Search</button>
+          </div>
+          <span class="help-text" id="teamSearchHelp"></span>
+          <div id="teamSearchResults" class="team-search-results"></div>
+          <div id="favoriteTeamsList" class="favorite-chips" style="margin-top: 10px;"></div>
+        </div>
+
+        <div class="section" style="margin-top: 16px;">
+          <h2 class="section-title">📌 Pinned Fixtures</h2>
+          <div id="pinnedFixturesList" class="pinned-list">
+            <div class="fb-empty">No pinned fixtures yet. Star a match in the 📅 Matches tab!</div>
+          </div>
+        </div>
+
+        <div class="section" style="margin-top: 16px;">
+          <h2 class="section-title">🔑 football-data.org API Key</h2>
+          <div class="form-group">
+            <label for="footballApiKeyInput">API Key (Optional)</label>
+            <input type="password" id="footballApiKeyInput" placeholder="Free key from football-data.org" autocomplete="off">
+            <span class="help-text">Favorites work without a key. A free key unlocks the full fixture schedule. Get one at <strong>football-data.org/client/register</strong>.</span>
+          </div>
+          <button type="button" class="btn btn-primary" id="saveFootballKeyBtn">Save Key</button>
+          <div id="footballKeyResult" class="test-result" style="display: none;"></div>
+        </div>
+
+        <div class="section" style="margin-top: 16px;">
+          <h2 class="section-title">🔔 Notification Preferences</h2>
+          <div class="form-group">
+            <label for="reminderMinutesInput">Pre-match Reminder (minutes before kickoff)</label>
+            <input type="number" id="reminderMinutesInput" min="5" max="120" step="5">
+          </div>
+          <div class="form-group checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="liveBoostCheckbox">
+              <span class="checkmark"></span>
+              Live Boost — faster live score updates via ESPN (no key needed)
+            </label>
+          </div>
+        </div>
       </div>
     </div>
 
