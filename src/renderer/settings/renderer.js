@@ -60,6 +60,11 @@ async function loadSettings() {
     showNotificationsCheckbox.checked = settings.showNotifications !== false;
     openInBrowserCheckbox.checked = settings.openInBrowser !== false;
     launchAtStartupCheckbox.checked = settings.launchAtStartup || false;
+    const footballEnabledCheckbox = document.getElementById('footballEnabled');
+    if (footballEnabledCheckbox) {
+      footballEnabledCheckbox.checked = settings.footballEnabled !== false;
+      applyFootballVisibility(settings.footballEnabled !== false);
+    }
   } catch (error) {
     console.error('Failed to load settings:', error);
   }
@@ -801,6 +806,15 @@ form.addEventListener('submit', async (e) => {
     openInBrowser: openInBrowserCheckbox.checked,
     launchAtStartup: launchAtStartupCheckbox.checked
   };
+
+  const footballEnabledCheckbox = document.getElementById('footballEnabled');
+  if (footballEnabledCheckbox) {
+    settings.footballEnabled = footballEnabledCheckbox.checked;
+    if (typeof window.api.setFootballEnabled === 'function') {
+      await window.api.setFootballEnabled(footballEnabledCheckbox.checked);
+      applyFootballVisibility(footballEnabledCheckbox.checked);
+    }
+  }
   
   setLoading(true);
   hideSaveResult();
@@ -853,6 +867,8 @@ tabBtns.forEach(btn => {
       loadLiveStatus();
     } else if (tab === 'channels') {
       loadChannels();
+    } else if (tab === 'football') {
+      loadFootballTab();
     }
   });
 });
@@ -885,7 +901,21 @@ document.querySelectorAll('.external-link-btn').forEach(btn => {
 async function loadHistory() {
   try {
     const history = await window.api.getHistory();
-    renderHistory(history);
+    let matchHistory = [];
+    try {
+      if (typeof window.api.getFootballState === 'function') {
+        // Football history rides on the same store; fetch via dedicated state
+        const fbSettings = await window.api.getSettings();
+        matchHistory = Array.isArray(fbSettings.matchHistory) ? fbSettings.matchHistory : [];
+      }
+    } catch (fbError) {
+      console.error('Failed to load match history:', fbError);
+    }
+    const merged = [
+      ...history.map(h => ({ ...h, kind: 'stream' })),
+      ...matchHistory.map(m => ({ ...m, kind: 'fixture' }))
+    ].sort((a, b) => b.timestamp - a.timestamp);
+    renderHistory(merged);
   } catch (error) {
     console.error('Failed to load history:', error);
     historyList.innerHTML = '<div class="history-empty">Failed to load history</div>';
@@ -897,22 +927,39 @@ function renderHistory(items) {
     historyList.innerHTML = '<div class="history-empty">No notifications yet</div>';
     return;
   }
-  
-  historyList.innerHTML = items.map(item => `
+
+  historyList.innerHTML = items.map(item => {
+    if (item.kind === 'fixture') {
+      const score = item.scoreHome != null ? `${item.scoreHome}-${item.scoreAway}` : '';
+      const label = item.type === 'reminder' ? 'starts soon' : item.type === 'kickoff' ? `kicked off ${score}` : `FT ${score}`;
+      return `
+      <div class="history-item" data-kind="fixture">
+        <div class="history-thumbnail" style="display:flex;align-items:center;justify-content:center;color:var(--fb-live-accent);">${SVG_ICONS.football}</div>
+        <div class="history-info">
+          <div class="history-title">${escapeHtml(item.title)} ${score ? `<strong>${escapeHtml(score)}</strong>` : ''}</div>
+          <div class="history-meta">
+            <span class="history-time">🕐 ${formatTime(item.timestamp)}</span>
+            <span class="history-badge">${SVG_ICONS.football} ${escapeHtml(label)}</span>
+          </div>
+        </div>
+      </div>`;
+    }
+    return `
     <div class="history-item ${item.clicked ? 'clicked' : ''}" data-video-id="${item.videoId}">
       ${item.thumbnail ? `<img src="${item.thumbnail}" alt="" class="history-thumbnail">` : '<div class="history-thumbnail" style="display:flex;align-items:center;justify-content:center;font-size:18px;">🎮</div>'}
       <div class="history-info">
         <div class="history-title">${escapeHtml(item.title)}</div>
         <div class="history-meta">
+          <span class="history-badge">${SVG_ICONS.gamepad} Stream</span>
           <span class="history-time">🕐 ${formatTime(item.timestamp)}</span>
           <span class="history-channel">${escapeHtml(item.channelTitle)}</span>
         </div>
       </div>
-    </div>
-  `).join('');
-  
-  // Add click handlers
-  historyList.querySelectorAll('.history-item').forEach(el => {
+    </div>`;
+  }).join('');
+
+  // Add click handlers (streams only)
+  historyList.querySelectorAll('.history-item[data-video-id]').forEach(el => {
     el.addEventListener('click', async () => {
       const videoId = el.dataset.videoId;
       await window.api.markHistoryClicked(videoId);
@@ -948,8 +995,10 @@ function formatTime(timestamp) {
 
 function escapeHtml(text) {
   const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  div.textContent = text == null ? '' : String(text);
+  return div.innerHTML
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 document.addEventListener('keydown', (e) => {
@@ -957,5 +1006,439 @@ document.addEventListener('keydown', (e) => {
     window.api.closeSettings();
   }
 });
+
+// ================= Football Tab Logic (plan §3.1) =================
+
+const SVG_ICONS = {
+  football: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 7l4 3-1.5 5h-5L8 10z"/><path d="M12 2v5M20.5 9.5L16 10M3.5 9.5L8 10M6 21l3.5-6M18 21l-3.5-6"/></svg>',
+  gamepad: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="11" height="11" aria-hidden="true"><path d="M6 12h4M8 10v4M15 13h.01M18 11h.01"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>',
+  star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg>',
+  starFilled: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26"/></svg>',
+  flame: '<svg class="flame-badge" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c1 4-3 6-3 9a3 3 0 0 0 6 0c0-1-.5-2-1-2.5 2.5.5 5 3 5 6.5a7 7 0 0 1-14 0c0-5 5-7 7-13z"/></svg>',
+  key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m3 3L21 8l-3-3"/></svg>'
+};
+
+const LEAGUE_LABELS = {
+  PL: 'EPL', PD: 'La Liga', SA: 'Serie A', BL1: 'Bundesliga', FL1: 'Ligue 1',
+  CL: 'UCL', WC: 'World Cup', EC: 'Euro', ELC: 'Championship', DED: 'Eredivisie',
+  PPL: 'Primeira', BSA: 'Brasileirão'
+};
+
+let footballState = {
+  apiKey: '', favoriteTeams: [], pinnedFixtures: [], leagues: [], liveBoost: true, reminderMinutes: 15
+};
+let fixturesCache = [];
+let activeFixtureFilter = 'all';
+let favSearchLeague = 'PL';
+
+const leagueChipsEl = document.getElementById('leagueChips');
+const favLeagueChipsEl = document.getElementById('favLeagueChips');
+const fixturesListEl = document.getElementById('fixturesList');
+const footballBannerEl = document.getElementById('footballBanner');
+const refreshFixturesBtn = document.getElementById('refreshFixturesBtn');
+const teamSearchInput = document.getElementById('teamSearchInput');
+const teamSearchBtn = document.getElementById('teamSearchBtn');
+const teamSearchResultsEl = document.getElementById('teamSearchResults');
+const teamSearchHelpEl = document.getElementById('teamSearchHelp');
+const favoriteTeamsListEl = document.getElementById('favoriteTeamsList');
+const pinnedFixturesListEl = document.getElementById('pinnedFixturesList');
+const footballApiKeyInput = document.getElementById('footballApiKeyInput');
+const saveFootballKeyBtn = document.getElementById('saveFootballKeyBtn');
+const footballKeyResult = document.getElementById('footballKeyResult');
+const reminderMinutesInput = document.getElementById('reminderMinutesInput');
+const liveBoostCheckbox = document.getElementById('liveBoostCheckbox');
+
+function applyFootballVisibility(enabled) {
+  const btn = document.querySelector('.tab-btn[data-tab="football"]');
+  if (btn) btn.style.display = enabled ? '' : 'none';
+}
+
+async function loadFootballTab() {
+  if (typeof window.api.getFootballState !== 'function') return;
+  try {
+    const state = await window.api.getFootballState();
+    if (!state.success) {
+      if (state.disabled) applyFootballVisibility(false);
+      return;
+    }
+    footballState = {
+      apiKey: state.apiKey || '',
+      favoriteTeams: state.favoriteTeams || [],
+      pinnedFixtures: state.pinnedFixtures || [],
+      leagues: state.leagues && state.leagues.length ? state.leagues : ['PL', 'PD', 'BL1', 'CL'],
+      liveBoost: state.liveBoost !== false,
+      reminderMinutes: state.reminderMinutes || 15
+    };
+    footballApiKeyInput.value = footballState.apiKey;
+    reminderMinutesInput.value = footballState.reminderMinutes;
+    liveBoostCheckbox.checked = footballState.liveBoost;
+    teamSearchHelpEl.textContent = footballState.apiKey
+      ? 'API key active — searching bundled top clubs.'
+      : 'No API key: searching bundled top clubs. Add a free key below for full schedules.';
+
+    const sched = await window.api.getFootballSchedule();
+    fixturesCache = (sched && sched.fixtures) || [];
+
+    renderLeagueChips(leagueChipsEl, footballState.leagues, toggleLeague);
+    renderLeagueChips(favLeagueChipsEl, [favSearchLeague], setFavSearchLeague);
+    renderFavoriteTeams();
+    renderPinnedFixtures();
+    renderFixtures();
+    updateFootballBanner();
+  } catch (error) {
+    console.error('Failed to load football tab:', error);
+    fixturesListEl.innerHTML = '<div class="fb-empty">Failed to load football data</div>';
+  }
+}
+
+function renderLeagueChips(container, activeCodes, onToggle) {
+  container.innerHTML = Object.keys(LEAGUE_LABELS).map(code => `
+    <button type="button" class="league-chip ${activeCodes.includes(code) ? 'active' : ''}" data-league="${code}">${LEAGUE_LABELS[code]}</button>
+  `).join('');
+  container.querySelectorAll('.league-chip').forEach(chip => {
+    chip.addEventListener('click', () => onToggle(chip.dataset.league));
+  });
+}
+
+async function toggleLeague(code) {
+  const next = footballState.leagues.includes(code)
+    ? footballState.leagues.filter(c => c !== code)
+    : [...footballState.leagues, code];
+  if (next.length === 0) return;
+  footballState.leagues = next;
+  try {
+    await window.api.setFootballLeagues(next);
+  } catch (error) {
+    console.error('Failed to save leagues:', error);
+  }
+  renderLeagueChips(leagueChipsEl, next, toggleLeague);
+  renderFixtures();
+}
+
+function setFavSearchLeague(code) {
+  favSearchLeague = code;
+  renderLeagueChips(favLeagueChipsEl, [code], setFavSearchLeague);
+  if (teamSearchInput.value.trim()) runTeamSearch();
+}
+
+function updateFootballBanner() {
+  if (!footballState.apiKey && fixturesCache.length === 0) {
+    footballBannerEl.innerHTML = `${SVG_ICONS.key}<span><strong>Add your free key</strong> from football-data.org to unlock the full fixture schedule. Favoriting teams already works without one!</span>`;
+    footballBannerEl.style.display = 'flex';
+  } else {
+    footballBannerEl.style.display = 'none';
+  }
+}
+
+function isFavoriteSide(fixture) {
+  return footballState.favoriteTeams.some(t =>
+    (t.id && (t.id === fixture.homeTeam.id || t.id === fixture.awayTeam.id)) ||
+    (fixture.homeTeam.name.toLowerCase() === (t.name || '').toLowerCase()) ||
+    (fixture.awayTeam.name.toLowerCase() === (t.name || '').toLowerCase())
+  );
+}
+
+function isPinned(fixture) {
+  return footballState.pinnedFixtures.some(p => p.id === fixture.id);
+}
+
+function crestHtml(team) {
+  if (team.crest) {
+    return `<img class="team-crest" src="${escapeHtml(team.crest)}" alt="" loading="lazy" data-monogram="${escapeHtml(team.name)}">`;
+  }
+  return monogramHtml(team.name);
+}
+
+// Swap broken crest images for monograms (no inline handlers)
+function wireCrestFallbacks(container) {
+  container.querySelectorAll('img.team-crest[data-monogram]').forEach(img => {
+    img.addEventListener('error', () => {
+      const span = document.createElement('span');
+      span.innerHTML = monogramHtml(img.dataset.monogram);
+      img.replaceWith(span.firstElementChild);
+    }, { once: true });
+  });
+}
+
+function monogramHtml(name) {
+  let hash = 0;
+  const clean = name || '?';
+  for (let i = 0; i < clean.length; i++) hash = (hash * 31 + clean.charCodeAt(i)) >>> 0;
+  const r = 40 + (hash % 180), g = 40 + ((hash >> 3) % 180), b = 40 + ((hash >> 6) % 180);
+  const words = clean.trim().split(/\s+/);
+  const initials = (words.length >= 2 ? words[0][0] + words[1][0] : clean.slice(0, 2)).toUpperCase();
+  return `<span class="crest-monogram" style="background:rgb(${r},${g},${b})">${escapeHtml(initials)}</span>`;
+}
+
+function renderFixtures() {
+  const now = Date.now();
+  let list = fixturesCache.filter(f => {
+    if (activeFixtureFilter === 'favorites') return isFavoriteSide(f);
+    if (activeFixtureFilter === 'live') return f.status === 'live';
+    if (activeFixtureFilter === 'finished') return f.status === 'finished';
+    return true;
+  });
+
+  // Favorites' and pinned fixtures always shown; others must pass league filter (Q10)
+  list = list.filter(f =>
+    isFavoriteSide(f) || isPinned(f) || footballState.leagues.includes(f.competition.code)
+  );
+
+  if (list.length === 0) {
+    fixturesListEl.innerHTML = '<div class="fb-empty">No fixtures yet. Add your free API key and hit Refresh!</div>';
+    return;
+  }
+
+  const byDay = new Map();
+  list
+    .sort((a, b) => Date.parse(a.kickoffUtc || 0) - Date.parse(b.kickoffUtc || 0))
+    .forEach(f => {
+      const d = new Date(f.kickoffUtc);
+      const key = d.toDateString();
+      if (!byDay.has(key)) byDay.set(key, []);
+      byDay.get(key).push(f);
+    });
+
+  let html = '';
+  for (const [dayKey, dayFixtures] of byDay) {
+    const date = new Date(dayKey);
+    const label = date.toDateString() === new Date().toDateString() ? 'Today' :
+      date.toDateString() === new Date(now + 86400000).toDateString() ? 'Tomorrow' :
+      date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    html += `<div class="fb-date-header">${label}</div>`;
+    html += dayFixtures.map(f => {
+      const live = f.status === 'live';
+      const finished = f.status === 'finished';
+      const center = finished
+        ? `<span class="fixture-score">${f.score.home ?? '-'} : ${f.score.away ?? '-'}</span>`
+        : live
+          ? `<span class="fixture-score">${escapeHtml(f.minute || 'LIVE')}</span>`
+          : `<span class="fixture-kickoff">${new Date(f.kickoffUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`;
+      return `
+      <div class="fixture-row ${live ? 'is-live' : ''}" data-fixture-id="${escapeHtml(f.id)}">
+        <div class="fixture-teams">
+          <span class="fixture-team home">${escapeHtml(f.homeTeam.name)} ${crestHtml(f.homeTeam)}</span>
+          ${center}
+          <span class="fixture-team away">${crestHtml(f.awayTeam)} ${escapeHtml(f.awayTeam.name)}</span>
+        </div>
+        ${f.bigMatch ? SVG_ICONS.flame : ''}
+        <span class="comp-chip">${escapeHtml(LEAGUE_LABELS[f.competition.code] || f.competition.code)}</span>
+        <button type="button" class="star-btn ${isPinned(f) ? 'pinned' : ''}" data-pin-id="${escapeHtml(f.id)}" title="Pin fixture">
+          ${isPinned(f) ? SVG_ICONS.starFilled : SVG_ICONS.star}
+        </button>
+      </div>`;
+    }).join('');
+  }
+  fixturesListEl.innerHTML = html;
+  wireCrestFallbacks(fixturesListEl);
+
+  fixturesListEl.querySelectorAll('.star-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const fixture = fixturesCache.find(f => f.id === btn.dataset.pinId);
+      if (!fixture) return;
+      try {
+        const res = await window.api.togglePinFixture(fixture);
+        if (res.success) {
+          footballState.pinnedFixtures = res.pinnedFixtures;
+          renderFixtures();
+          renderPinnedFixtures();
+        }
+      } catch (error) {
+        console.error('Failed to toggle pin:', error);
+      }
+    });
+  });
+}
+
+function renderPinnedFixtures() {
+  if (footballState.pinnedFixtures.length === 0) {
+    pinnedFixturesListEl.innerHTML = '<div class="fb-empty">No pinned fixtures yet. Star a match in the 📅 Matches tab!</div>';
+    return;
+  }
+  pinnedFixturesListEl.innerHTML = footballState.pinnedFixtures.map(f => `
+    <div class="fixture-row">
+      <div class="fixture-teams">
+        <span class="fixture-team home">${escapeHtml(f.homeTeam.name)}</span>
+        <span class="fixture-kickoff">${new Date(f.kickoffUtc).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+        <span class="fixture-team away">${escapeHtml(f.awayTeam.name)}</span>
+      </div>
+      <button type="button" class="star-btn pinned" data-unpin-id="${escapeHtml(f.id)}" title="Unpin">${SVG_ICONS.starFilled}</button>
+    </div>
+  `).join('');
+  pinnedFixturesListEl.querySelectorAll('[data-unpin-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const fixture = footballState.pinnedFixtures.find(f => f.id === btn.dataset.unpinId);
+      if (!fixture) return;
+      try {
+        const res = await window.api.togglePinFixture(fixture);
+        if (res.success) {
+          footballState.pinnedFixtures = res.pinnedFixtures;
+          renderPinnedFixtures();
+          renderFixtures();
+        }
+      } catch (error) {
+        console.error('Failed to unpin:', error);
+      }
+    });
+  });
+}
+
+function renderFavoriteTeams() {
+  if (footballState.favoriteTeams.length === 0) {
+    favoriteTeamsListEl.innerHTML = '<span class="fb-empty" style="padding:6px;">No favorite teams yet — search above!</span>';
+    return;
+  }
+  favoriteTeamsListEl.innerHTML = footballState.favoriteTeams.map(t => `
+    <span class="favorite-chip">${crestHtml(t)} ${escapeHtml(t.name)}
+      <button type="button" data-remove-team="${escapeHtml(t.id)}" data-remove-name="${escapeHtml(t.name)}" title="Remove favorite">✕</button>
+    </span>
+  `).join('');
+  wireCrestFallbacks(favoriteTeamsListEl);
+  favoriteTeamsListEl.querySelectorAll('[data-remove-team]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try {
+        const res = await window.api.removeFavoriteTeam(btn.dataset.removeTeam || btn.dataset.removeName);
+        if (res.success) {
+          footballState.favoriteTeams = res.favoriteTeams;
+          renderFavoriteTeams();
+          renderFixtures();
+        }
+      } catch (error) {
+        console.error('Failed to remove favorite:', error);
+      }
+    });
+  });
+}
+
+async function runTeamSearch() {
+  const query = teamSearchInput.value.trim();
+  teamSearchResultsEl.innerHTML = '<div class="fb-empty">Searching...</div>';
+  try {
+    const res = await window.api.searchFootballTeams({ query, competitionCode: favSearchLeague });
+    if (!res.success || res.disabled) {
+      teamSearchResultsEl.innerHTML = '<div class="fb-empty">Football features are disabled.</div>';
+      return;
+    }
+    if (res.teams.length === 0) {
+      teamSearchResultsEl.innerHTML = '<div class="fb-empty">No teams found in this league.</div>';
+      return;
+    }
+    teamSearchResultsEl.innerHTML = res.teams.map(t => `
+      <div class="team-result" data-team-name="${escapeHtml(t.name)}" data-team-code="${escapeHtml(t.competitionCode)}">
+        ${crestHtml(t)} ${escapeHtml(t.name)}
+        <span style="margin-left:auto;">${SVG_ICONS.star}</span>
+      </div>
+    `).join('');
+    wireCrestFallbacks(teamSearchResultsEl);
+    teamSearchResultsEl.querySelectorAll('.team-result').forEach(el => {
+      el.addEventListener('click', async () => {
+        try {
+          const res2 = await window.api.addFavoriteTeam({
+            id: '', name: el.dataset.teamName, crest: '', competitionCode: el.dataset.teamCode
+          });
+          if (res2.success) {
+            footballState.favoriteTeams = res2.favoriteTeams;
+            renderFavoriteTeams();
+            renderFixtures();
+            teamSearchResultsEl.innerHTML = `<div class="fb-empty">⭐ ${escapeHtml(el.dataset.teamName)} favorited!</div>`;
+          }
+        } catch (error) {
+          console.error('Failed to add favorite:', error);
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Team search failed:', error);
+    teamSearchResultsEl.innerHTML = '<div class="fb-empty">Search failed — try again.</div>';
+  }
+}
+
+teamSearchBtn.addEventListener('click', runTeamSearch);
+teamSearchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') runTeamSearch();
+});
+
+refreshFixturesBtn.addEventListener('click', async () => {
+  refreshFixturesBtn.disabled = true;
+  fixturesListEl.innerHTML = '<div class="fb-skeleton"></div><div class="fb-skeleton"></div><div class="fb-skeleton"></div>';
+  try {
+    const res = await window.api.checkFootballNow();
+    if (res.success) {
+      const sched = await window.api.getFootballSchedule();
+      fixturesCache = (sched && sched.fixtures) || [];
+      updateFootballBanner();
+      renderFixtures();
+    } else if (res.disabled) {
+      applyFootballVisibility(false);
+    } else {
+      fixturesListEl.innerHTML = `<div class="fb-empty">Refresh failed: ${escapeHtml(res.error || 'unknown error')}</div>`;
+    }
+  } catch (error) {
+    console.error('Fixture refresh failed:', error);
+    fixturesListEl.innerHTML = '<div class="fb-empty">Refresh failed — check your connection.</div>';
+  } finally {
+    refreshFixturesBtn.disabled = false;
+  }
+});
+
+document.querySelectorAll('.fixture-pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('.fixture-pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    activeFixtureFilter = pill.dataset.fixtureFilter;
+    renderFixtures();
+  });
+});
+
+saveFootballKeyBtn.addEventListener('click', async () => {
+  const key = footballApiKeyInput.value.trim();
+  const showFbResult = (msg) => {
+    if (footballKeyResult) {
+      footballKeyResult.textContent = msg;
+      footballKeyResult.style.display = 'block';
+    }
+  };
+  try {
+    await window.api.saveSettings({ footballApiKey: key });
+    footballState.apiKey = key;
+    teamSearchHelpEl.textContent = key
+      ? 'API key active — full schedule unlocked.'
+      : 'No API key: searching bundled top clubs.';
+    showFbResult('✅ Football API key saved! Hit 🔄 Refresh in the Matches tab.');
+  } catch (error) {
+    showFbResult(`❌ Failed to save key: ${error.message}`);
+  }
+});
+
+reminderMinutesInput.addEventListener('change', async () => {
+  const minutes = Math.min(120, Math.max(5, parseInt(reminderMinutesInput.value) || 15));
+  reminderMinutesInput.value = minutes;
+  try {
+    await window.api.saveSettings({ matchReminderMinutes: minutes });
+  } catch (error) {
+    console.error('Failed to save reminder minutes:', error);
+  }
+});
+
+liveBoostCheckbox.addEventListener('change', async () => {
+  try {
+    await window.api.saveSettings({ footballLiveBoost: liveBoostCheckbox.checked });
+  } catch (error) {
+    console.error('Failed to save live boost setting:', error);
+  }
+});
+
+if (typeof window.api.onFootballStatusUpdated === 'function') {
+  window.api.onFootballStatusUpdated(() => {
+    // Light refresh when the monitor pushes new state while tab is open
+    if (document.getElementById('tab-football').classList.contains('active')) {
+      window.api.getFootballSchedule().then(sched => {
+        fixturesCache = (sched && sched.fixtures) || [];
+        renderFixtures();
+      }).catch(err => console.error('Football schedule refresh failed:', err));
+    }
+  });
+}
 
 loadSettings();

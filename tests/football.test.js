@@ -1,0 +1,200 @@
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+const {
+  LEAGUES,
+  createFdProvider,
+  createEspnProvider
+} = require('../src/main/football');
+
+function headersLike(map) {
+  return { get: (name) => map[String(name).toLowerCase()] ?? null };
+}
+
+describe('Football Providers Tests', () => {
+  describe('League registry', () => {
+    it('covers all 12 free competitions with espn slugs', () => {
+      const codes = LEAGUES.map(l => l.code);
+      for (const code of ['PL', 'PD', 'SA', 'BL1', 'FL1', 'CL', 'WC', 'EC', 'ELC', 'DED', 'PPL', 'BSA']) {
+        assert.ok(codes.includes(code), `missing ${code}`);
+      }
+      const pl = LEAGUES.find(l => l.code === 'PL');
+      assert.equal(pl.espnSlug, 'eng.1');
+      const cl = LEAGUES.find(l => l.code === 'CL');
+      assert.equal(cl.espnSlug, 'uefa.champions');
+    });
+  });
+
+  describe('football-data.org provider', () => {
+    it('fetches and normalizes fixtures with auth header', async () => {
+      let captured;
+      const fetchFn = async (url, opts) => {
+        captured = { url, opts };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            matches: [{
+              id: 452312,
+              utcDate: '2026-08-22T16:30:00Z',
+              status: 'TIMED',
+              homeTeam: { id: 57, name: 'Arsenal', crest: '' },
+              awayTeam: { id: 47, name: 'Tottenham Hotspur', crest: '' },
+              competition: { code: 'PL', name: 'Premier League' },
+              score: { fullTime: { home: null, away: null } }
+            }]
+          })
+        };
+      };
+      const provider = createFdProvider({ apiKey: 'test-key', fetchFn });
+      const fixtures = await provider.fetchSchedule('PL', '2026-08-20', '2026-08-27');
+
+      assert.ok(captured.url.includes('/v4/competitions/PL/matches'));
+      assert.ok(captured.url.includes('dateFrom=2026-08-20'));
+      assert.equal(captured.opts.headers['X-Auth-Token'], 'test-key');
+      assert.equal(fixtures.length, 1);
+      assert.equal(fixtures[0].status, 'scheduled');
+    });
+
+    it('retries a 429 without reset header once (bounded default backoff), then throws with status context', async () => {
+      const delays = [];
+      const sleepFn = (ms) => { delays.push(ms); return Promise.resolve(); };
+      let calls = 0;
+      const fetchFn = async () => {
+        calls++;
+        return { ok: false, status: 429, headers: null, json: async () => ({ message: 'rate limited' }) };
+      };
+      const provider = createFdProvider({ apiKey: 'k', fetchFn, sleepFn });
+      await assert.rejects(() => provider.fetchSchedule('PL', 'a', 'b'), /429/);
+      assert.equal(calls, 2);
+      assert.ok(delays.some(d => d >= 60000), 'default bounded backoff of ~60s applied when no reset header');
+    });
+
+    it('requires an api key at construction', () => {
+      assert.throws(() => createFdProvider({ fetchFn: async () => ({}) }));
+    });
+
+    it('tracks X-RequestsAvailable / X-RequestCounter-Reset and waits for the reset window near the limit', async () => {
+      const delays = [];
+      const sleepFn = (ms) => { delays.push(ms); return Promise.resolve(); };
+      let calls = 0;
+      const fetchFn = async () => {
+        calls++;
+        if (calls === 1) {
+          // First response reports only 1 remaining request, window resets in 12s
+          return {
+            ok: true, status: 200,
+            headers: headersLike({ 'x-requestsavailable': '1', 'x-requestcounter-reset': '12' }),
+            json: async () => ({ matches: [] })
+          };
+        }
+        return {
+          ok: true, status: 200,
+          headers: headersLike({ 'x-requestsavailable': '9', 'x-requestcounter-reset': '60' }),
+          json: async () => ({ matches: [] })
+        };
+      };
+      const provider = createFdProvider({ apiKey: 'k', fetchFn, sleepFn });
+
+      await provider.fetchSchedule('PL', 'a', 'b');
+      await provider.fetchSchedule('PL', 'a', 'b');
+
+      assert.equal(calls, 2);
+      assert.ok(delays.some(d => d >= 12000), `expected a >=12s adaptive wait, got ${JSON.stringify(delays)}`);
+      assert.equal(provider.getThrottleState().lastAvailable, 9);
+    });
+
+    it('retries once after honoring X-RequestCounter-Reset on a 429', async () => {
+      const delays = [];
+      const sleepFn = (ms) => { delays.push(ms); return Promise.resolve(); };
+      let calls = 0;
+      const fetchFn = async () => {
+        calls++;
+        if (calls === 1) {
+          return {
+            ok: false, status: 429,
+            headers: headersLike({ 'x-requestcounter-reset': '8' }),
+            json: async () => ({ message: 'too many requests' })
+          };
+        }
+        return {
+          ok: true, status: 200,
+          headers: headersLike({ 'x-requestcounter': '2', 'x-requestcounter-reset': '55' }),
+          json: async () => ({ matches: [{ id: 1, utcDate: '2026-08-22T16:30:00Z', status: 'TIMED', homeTeam: { name: 'A' }, awayTeam: { name: 'B' }, competition: {} }] })
+        };
+      };
+      const provider = createFdProvider({ apiKey: 'k', fetchFn, sleepFn });
+      const fixtures = await provider.fetchSchedule('PL', 'a', 'b');
+
+      assert.equal(calls, 2);
+      assert.ok(delays.some(d => d >= 8000), `expected an >=8s reset wait, got ${JSON.stringify(delays)}`);
+      assert.equal(fixtures.length, 1);
+    });
+
+    it('still throws with status context on non-429 errors', async () => {
+      const fetchFn = async () => ({ ok: false, status: 403, headers: null, json: async () => ({ message: 'nope' }) });
+      const provider = createFdProvider({ apiKey: 'k', fetchFn, sleepFn: () => Promise.resolve() });
+      await assert.rejects(() => provider.fetchSchedule('PL', 'a', 'b'), /403/);
+    });
+  });
+
+  describe('ESPN Live Boost provider', () => {
+    const scoreboard = {
+      leagues: [{ abbreviation: 'ENG PL' }],
+      events: [{
+        id: 'e1',
+        date: '2026-08-22T16:30:00Z',
+        status: { clock: 5400, displayClock: "90'+4'", type: { state: 'in', completed: false, shortDetail: 'FT - ENGLISH PREMIER LEAGUE' } },
+        competitions: [{
+          competitors: [
+            { homeAway: 'home', score: '1', team: { displayName: 'Brentford' } },
+            { homeAway: 'away', score: '0', team: { displayName: 'Tottenham Hotspur' } }
+          ]
+        }]
+      }, {
+        id: 'e2',
+        date: '2026-08-22T18:00:00Z',
+        status: { type: { state: 'post', completed: true, shortDetail: 'FT' } },
+        competitions: [{
+          competitors: [
+            { homeAway: 'home', score: '3', team: { displayName: 'Arsenal' } },
+            { homeAway: 'away', score: '1', team: { displayName: 'Chelsea' } }
+          ]
+        }]
+      }]
+    };
+
+    function fakeFetch(expectedSlug) {
+      return async (url) => {
+        assert.ok(url.includes(`soccer/${expectedSlug}/scoreboard`));
+        return { ok: true, status: 200, json: async () => scoreboard };
+      };
+    }
+
+    it('maps scoreboard events to live states per league', async () => {
+      const provider = createEspnProvider({ fetchFn: fakeFetch('eng.1') });
+      const states = await provider.fetchLiveState(['PL']);
+      assert.equal(states.length, 2);
+      const live = states.find(s => s.state === 'in');
+      assert.equal(live.homeName, 'Brentford');
+      assert.equal(live.minute, "90'+4'");
+      const done = states.find(s => s.state === 'post');
+      assert.equal(done.scoreHome, 3);
+    });
+
+    it('skips a failing league but preserves the error via onError callback', async () => {
+      const seen = [];
+      const fetchFn = async (url) => {
+        if (url.includes('ger.1')) throw new Error('boom');
+        return { ok: true, status: 200, json: async () => ({ events: [] }) };
+      };
+      const provider = createEspnProvider({
+        fetchFn,
+        onError: (err, slug) => seen.push([slug, err.message])
+      });
+      const states = await provider.fetchLiveState(['BL1', 'PL']);
+      assert.deepEqual(states, []);
+      assert.equal(seen.length, 1);
+      assert.equal(seen[0][0], 'BL1');
+    });
+  });
+});

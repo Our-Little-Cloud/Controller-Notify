@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell, Notification } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, shell } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 const { checkLiveStatus, getChannelIdFromUrl, checkLiveStatusFree, checkLiveStatusUnified } = require('./youtube');
@@ -11,6 +11,17 @@ const {
   migrateChannelsStore
 } = require('./channelManager');
 const { createLiveMonitor, HISTORY_KEY, MAX_HISTORY } = require('./liveMonitor');
+const { LEAGUES, createFdProvider, createEspnProvider } = require('./football');
+const {
+  loadBigClubs,
+  searchBigClubs,
+  addFavoriteTeam,
+  removeFavoriteTeam,
+  togglePinnedFixture,
+  normalizeFixture,
+  isBigMatch
+} = require('./footballManager');
+const { createFootballMonitor, FIXTURES_KEY } = require('./footballMonitor');
 require('dotenv').config();
 
 // Performance & low-memory Chromium command line switches
@@ -29,7 +40,16 @@ const store = new Store({
     showNotifications: true,
     openInBrowser: true,
     launchAtStartup: false,
-    controllerImage: ''
+    controllerImage: '',
+    footballEnabled: true,
+    footballApiKey: '',
+    footballFavoriteTeams: [],
+    footballPinnedFixtures: [],
+    footballLeagues: ['PL', 'PD', 'BL1', 'CL'],
+    footballLiveBoost: true,
+    matchReminderMinutes: 15,
+    matchEventLog: {},
+    matchHistory: []
   }
 });
 
@@ -45,17 +65,92 @@ let isQuitting = false;
 // Initialize deep WindowManager module
 const windowManager = require('./windowManager').createWindowManager({ store });
 
+// --- Football wiring -------------------------------------------------------
+
+let bigClubsCache = null;
+try {
+  bigClubsCache = loadBigClubs();
+} catch (err) {
+  console.error('Failed to load bundled big-clubs list:', err.stack || err);
+}
+
+let footballMonitor = null;
+
+function buildFootballMonitor() {
+  if (footballMonitor) footballMonitor.stop();
+  const logFootballError = (err) => {
+    console.error('[FootballMonitor]', err && err.stack ? err.stack : err);
+  };
+  const apiKey = store.get('footballApiKey', '');
+  const fdProvider = apiKey ? createFdProvider({ apiKey, fetchFn: (url, opts) => fetch(url, opts) }) : null;
+  const espnProvider = createEspnProvider({
+    fetchFn: (url) => fetch(url),
+    onError: logFootballError
+  });
+
+  footballMonitor = createFootballMonitor({
+    store,
+    favoriteTeams: store.get('footballFavoriteTeams', []),
+    pinnedFixtures: store.get('footballPinnedFixtures', []),
+    leagues: store.get('footballLeagues', ['PL', 'PD', 'BL1', 'CL']),
+    reminderMinutes: store.get('matchReminderMinutes', 15),
+    liveBoost: store.get('footballLiveBoost', true),
+    espnProvider,
+    fdProvider,
+    onFixtureEvent: (event) => {
+      if (!store.get('showNotifications', true)) return;
+      const { type: eventType, ...rest } = event;
+      const payload = {
+        ...rest,
+        eventType,
+        type: 'football',
+        theme: store.get('theme', 'pink'),
+        reminderMinutes: store.get('matchReminderMinutes', 15)
+      };
+      windowManager.createPopupWindow(payload);
+    },
+    onError: logFootballError,
+    onStatusUpdate: () => broadcastFootballStatus()
+  });
+  return footballMonitor;
+}
+
+function isFootballEnabled() {
+  return store.get('footballEnabled', true) === true;
+}
+
+function startFootballIfEnabled() {
+  if (isFootballEnabled()) {
+    buildFootballMonitor().start();
+  } else if (footballMonitor) {
+    footballMonitor.stop();
+  }
+}
+
+// Wiring-level guard: disabled football IPC resolves {disabled:true} (plan §2.6)
+function guardFootball(handlerFn) {
+  return async (...args) => {
+    if (!isFootballEnabled()) {
+      return { success: false, disabled: true };
+    }
+    try {
+      return await handlerFn(...args);
+    } catch (err) {
+      console.error('[Football IPC]', err && err.stack ? err.stack : err);
+      return { success: false, error: err.message };
+    }
+  };
+}
+
+
 // Initialize deep LiveMonitor module
 const liveMonitor = createLiveMonitor({
   store,
   checkLiveStatusFn: checkLiveStatusUnified,
-  onStreamLive: (streamData, manual) => {
+  onStreamLive: (streamData) => {
     if (store.get('showNotifications', true)) {
       const payload = { theme: store.get('theme', 'pink'), ...streamData };
       windowManager.createPopupWindow(payload);
-      if (manual) {
-        showNotification('🎮 LIVE!', `"${streamData.title}" is now live`);
-      }
     }
   },
   onStatusUpdate: (statusSnapshot) => {
@@ -69,18 +164,21 @@ const liveMonitor = createLiveMonitor({
 function updateTrayContextMenu() {
   if (!tray) return;
   const showNotifs = store.get('showNotifications', true);
-  
-  const contextMenu = Menu.buildFromTemplate([
+
+  const template = [
     {
       label: 'Check Now',
-      click: () => {
-        if (Notification.isSupported()) {
-          new Notification({
-            title: 'Controller Notify',
-            body: '🔍 Checking monitored channels live status...'
-          }).show();
+      click: async () => {
+        // Corner-popup feedback instead of OS notifications (fully deprecated)
+        const status = await Promise.resolve(liveMonitor.checkNow(true));
+        const liveCount = (status.liveChannels || []).length;
+        if (liveCount === 0) {
+          windowManager.createPopupWindow({
+            theme: store.get('theme', 'pink'),
+            title: 'Nobody is live right now',
+            channelTitle: `Checked ${(status.channels || []).length} channels`
+          });
         }
-        liveMonitor.checkNow(true);
       }
     },
     { type: 'separator' },
@@ -92,13 +190,16 @@ function updateTrayContextMenu() {
         store.set('showNotifications', menuItem.checked);
         windowManager.broadcastToSettings('notification-setting-changed', menuItem.checked);
       }
-    },
+    }
+  ];
+
+  template.push(
     { label: 'Settings', click: () => windowManager.createSettingsWindow() },
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() }
-  ]);
-  
-  tray.setContextMenu(contextMenu);
+  );
+
+  tray.setContextMenu(Menu.buildFromTemplate(template));
 }
 
 function createTray() {
@@ -119,11 +220,29 @@ function updateTrayTooltip(isLive, liveChannels = []) {
     const titles = liveChannels.map(c => c.title || c.handle || 'Streamer');
     const display = titles.slice(0, 2).join(', ') + (titles.length > 2 ? ` +${titles.length - 2} more` : '');
     tray.setToolTip(`🎮 ${display} is LIVE!`);
-  } else {
-    const count = channels.length;
-    const name = count === 1 ? (channels[0].title || channels[0].handle || 'Streamer') : `${count} channels`;
-    tray.setToolTip(count > 0 ? `Controller Notify is watching ${name}...` : 'Controller Notify (No channels configured)');
+    return;
   }
+
+  // Football: live or next watched fixture (Q12)
+  if (isFootballEnabled() && footballMonitor) {
+    const fb = footballMonitor.getStatus();
+    if (fb.liveWatched && fb.liveWatched.length > 0) {
+      const m = fb.liveWatched[0];
+      const score = m.score && m.score.home != null ? ` ${m.score.home}-${m.score.away}` : '';
+      tray.setToolTip(`⚽ LIVE:${score} ${m.homeTeam.name} vs ${m.awayTeam.name}`);
+      return;
+    }
+    if (fb.nextWatched) {
+      const f = fb.nextWatched;
+      const time = new Date(f.kickoffUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      tray.setToolTip(`⚽ Next: ${f.homeTeam.name} vs ${f.awayTeam.name} · ${time}`);
+      return;
+    }
+  }
+
+  const count = channels.length;
+  const name = count === 1 ? (channels[0].title || channels[0].handle || 'Streamer') : `${count} channels`;
+  tray.setToolTip(count > 0 ? `Controller Notify is watching ${name}...` : 'Controller Notify (No channels configured)');
 }
 
 function updateTrayIcon(isLive) {
@@ -132,12 +251,6 @@ function updateTrayIcon(isLive) {
   const iconPath = path.join(__dirname, '../../assets/', iconName);
   const trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
   tray.setImage(trayIcon);
-}
-
-function showNotification(title, body) {
-  if (Notification.isSupported()) {
-    new Notification({ title, body, silent: true }).show();
-  }
 }
 
 const gotTheLock = app.requestSingleInstanceLock();
@@ -151,6 +264,7 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     createTray();
     liveMonitor.start();
+    startFootballIfEnabled();
     
     const launchAtStartup = store.get('launchAtStartup');
     app.setLoginItemSettings({ openAtLogin: launchAtStartup });
@@ -174,6 +288,7 @@ app.on('before-quit', () => {
   isQuitting = true;
   windowManager.setQuitting(true);
   liveMonitor.stop();
+  if (footballMonitor) footballMonitor.stop();
 });
 
 ipcMain.handle('get-settings', () => {
@@ -184,6 +299,7 @@ ipcMain.handle('save-settings', async (_, settings) => {
   const oldApiKey = store.get('apiKey');
   const oldChannelId = store.get('channelId');
   const oldChannelUrl = store.get('channelUrl');
+  const oldFootballApiKey = store.get('footballApiKey');
   
   if (settings.channelUrl && (settings.channelUrl !== oldChannelUrl || !settings.channelId)) {
     try {
@@ -213,7 +329,13 @@ ipcMain.handle('save-settings', async (_, settings) => {
   if (apiKeyChanged || channelChanged) {
     liveMonitor.checkNow(false);
   }
-  
+
+  if (settings.footballApiKey !== undefined && settings.footballApiKey !== oldFootballApiKey) {
+    startFootballIfEnabled();
+    if (footballMonitor) Promise.resolve(footballMonitor.checkSweep()).catch(err =>
+      console.error('[Football] sweep after key change failed:', err.stack || err));
+  }
+
   return { success: true, channelId: settings.channelId };
 });
 
@@ -456,3 +578,132 @@ ipcMain.on('click-stream', (_, targetVideoId) => {
 ipcMain.on('close-popup', () => {
   windowManager.animatePopupOut();
 });
+
+// --- Football IPC (guarded: {success:false, disabled:true} when off) --------
+
+function broadcastFootballStatus() {
+  if (!footballMonitor) return;
+  try {
+    windowManager.broadcastToSettings('football-status-updated', footballMonitor.getStatus());
+    updateTrayTooltip(false);
+    updateTrayContextMenu();
+  } catch (err) {
+    console.error('[Football] status broadcast failed:', err.stack || err);
+  }
+}
+
+ipcMain.handle('get-football-state', guardFootball(() => ({
+  success: true,
+  enabled: true,
+  apiKey: store.get('footballApiKey', ''),
+  favoriteTeams: store.get('footballFavoriteTeams', []),
+  pinnedFixtures: store.get('footballPinnedFixtures', []),
+  leagues: store.get('footballLeagues', []),
+  liveBoost: store.get('footballLiveBoost', true),
+  reminderMinutes: store.get('matchReminderMinutes', 15),
+  status: footballMonitor ? footballMonitor.getStatus() : null
+})));
+
+ipcMain.handle('get-football-schedule', guardFootball(() => ({
+  success: true,
+  fixtures: store.get(FIXTURES_KEY, []).map(f => ({
+    ...f,
+    bigMatch: isBigMatch(f)
+  }))
+})));
+
+ipcMain.handle('search-football-teams', guardFootball(async (_, { query = '', competitionCode = '' } = {}) => {
+  const apiKey = store.get('footballApiKey', '');
+  const q = String(query || '').trim().toLowerCase();
+
+  // Keyed: league-first live search over the API team list
+  if (apiKey && competitionCode) {
+    try {
+      const url = `https://api.football-data.org/v4/competitions/${encodeURIComponent(competitionCode)}/teams`;
+      const res = await fetch(url, { headers: { 'X-Auth-Token': apiKey } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const teams = (data.teams || [])
+        .map(t => ({ id: String(t.id), name: t.name, crest: t.crest || '', competitionCode }))
+        .filter(t => !q || t.name.toLowerCase().includes(q))
+        .slice(0, 30);
+      return { success: true, source: 'api', teams };
+    } catch (err) {
+      console.error('[Football] API team search failed, falling back to bundled list:', err.stack || err);
+    }
+  }
+
+  // Keyless fallback: bundled big-clubs list
+  return {
+    success: true,
+    source: 'bundled',
+    teams: searchBigClubs(bigClubsCache || [], query, { competitionCode }).slice(0, 30)
+  };
+}));
+
+ipcMain.handle('add-favorite-team', guardFootball((_, team) => {
+  const updated = addFavoriteTeam(store.get('footballFavoriteTeams', []), team);
+  store.set('footballFavoriteTeams', updated);
+  startFootballIfEnabled();
+  return { success: true, favoriteTeams: updated };
+}));
+
+ipcMain.handle('remove-favorite-team', guardFootball((_, teamId) => {
+  const updated = removeFavoriteTeam(store.get('footballFavoriteTeams', []), teamId);
+  store.set('footballFavoriteTeams', updated);
+  return { success: true, favoriteTeams: updated };
+}));
+
+ipcMain.handle('toggle-pin-fixture', guardFootball((_, fixture) => {
+  const normalized = normalizeFixture(fixture);
+  if (!normalized) throw new Error('Invalid fixture data');
+  const updated = togglePinnedFixture(store.get('footballPinnedFixtures', []), normalized);
+  store.set('footballPinnedFixtures', updated);
+  if (footballMonitor) Promise.resolve(footballMonitor.checkWatch()).catch(err =>
+    console.error('[Football] watch after pin failed:', err.stack || err));
+  return { success: true, pinnedFixtures: updated };
+}));
+
+ipcMain.handle('set-football-leagues', guardFootball((_, leagues) => {
+  if (!Array.isArray(leagues)) throw new Error('leagues must be an array');
+  const valid = leagues.filter(c => LEAGUES.some(l => l.code === c));
+  store.set('footballLeagues', valid);
+  startFootballIfEnabled();
+  return { success: true, leagues: valid };
+}));
+
+ipcMain.handle('set-football-enabled', (_, enabled) => {
+  store.set('footballEnabled', enabled === true);
+  startFootballIfEnabled();
+  updateTrayContextMenu();
+  windowManager.broadcastToSettings('football-setting-changed', enabled === true);
+  return { success: true, enabled: enabled === true };
+});
+
+ipcMain.handle('check-football-now', guardFootball(async () => {
+  if (!footballMonitor) return { success: false, error: 'Football monitor not running' };
+  await footballMonitor.checkSweep();
+  const status = await footballMonitor.checkWatch();
+  broadcastFootballStatus();
+  return { success: true, status };
+}));
+
+ipcMain.handle('test-football-notification', guardFootball(() => {
+  const payload = {
+    type: 'football',
+    theme: store.get('theme', 'pink'),
+    fixtureId: 'test',
+    eventType: 'kickoff',
+    eventLabel: 'KICKED OFF',
+    homeName: 'Arsenal',
+    awayName: 'Chelsea',
+    homeCrest: '',
+    awayCrest: '',
+    competitionCode: 'PL',
+    scoreHome: null,
+    scoreAway: null,
+    minute: null
+  };
+  windowManager.createPopupWindow(payload);
+  return { success: true };
+}));

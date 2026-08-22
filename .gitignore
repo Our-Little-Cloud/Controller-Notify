@@ -33,6 +33,7 @@ CLAUDE.md
 GEMINI.md
 CONTEXT.md
 .agents
+.opencode
 .env.example
 logs/
 

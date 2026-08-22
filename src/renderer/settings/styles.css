@@ -41,6 +41,12 @@
   --badge-live-text: #ffffff;
   --badge-offline-bg: #f0f0f0;
   --badge-offline-text: #666666;
+  /* Football semantic tokens (plan §3.2) */
+  --fb-live-accent: #2e7d32;
+  --fb-win: #388e3c;
+  --fb-loss: #c62828;
+  --fb-draw: #f57f17;
+  --fb-pitch-soft: #e8f5e9;
 }
 
 :root[data-theme="dark"] {
@@ -85,6 +91,11 @@
   --badge-live-text: #ffffff;
   --badge-offline-bg: #22283e;
   --badge-offline-text: #7a889b;
+  --fb-live-accent: #00ff88;
+  --fb-win: #00e676;
+  --fb-loss: #ff5252;
+  --fb-draw: #ffd740;
+  --fb-pitch-soft: rgba(0, 255, 136, 0.08);
 }
 
 :root[data-theme="turquoise"] {
@@ -129,6 +140,11 @@
   --badge-live-text: #ffffff;
   --badge-offline-bg: #e0f4f2;
   --badge-offline-text: #4e8780;
+  --fb-live-accent: #00796b;
+  --fb-win: #00897b;
+  --fb-loss: #d32f2f;
+  --fb-draw: #f9a825;
+  --fb-pitch-soft: #e0f2f1;
 }
 
 :root[data-theme="gameboy"] {
@@ -173,6 +189,11 @@
   --badge-live-text: #ffffff;
   --badge-offline-bg: #c8cac0;
   --badge-offline-text: #6b7064;
+  --fb-live-accent: #33691e;
+  --fb-win: #558b2f;
+  --fb-loss: #b71c1c;
+  --fb-draw: #f9a825;
+  --fb-pitch-soft: #e6edd9;
 }
 
 :root[data-theme="atomic-purple"] {
@@ -217,6 +238,11 @@
   --badge-live-text: #ffffff;
   --badge-offline-bg: #2d204d;
   --badge-offline-text: #9c8eb9;
+  --fb-live-accent: #7c4dff;
+  --fb-win: #00e676;
+  --fb-loss: #ff1744;
+  --fb-draw: #ffd740;
+  --fb-pitch-soft: rgba(124, 77, 255, 0.10);
 }
 
 * {
@@ -1541,3 +1567,284 @@ body {
   font-size: 15px;
   line-height: 1;
 }
+/* ================= Football Tab (plan §3.1) ================= */
+
+.league-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.league-chip {
+  cursor: pointer;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--pill-text);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+}
+
+.league-chip:hover {
+  border-color: var(--input-focus-border);
+}
+
+.league-chip.active {
+  background: var(--pill-active-bg);
+  color: var(--pill-active-text);
+  border-color: transparent;
+}
+
+.fixtures-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.fb-date-header {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.fixture-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--fb-pitch-soft);
+  border: 1px solid var(--section-border);
+  border-radius: 10px;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.fixture-row:hover {
+  border-color: var(--input-focus-border);
+}
+
+.fixture-teams {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fixture-team {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-main);
+}
+
+.fixture-team.home { justify-content: flex-end; text-align: right; }
+.fixture-team.away { justify-content: flex-start; }
+
+.team-crest,
+.crest-monogram {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.crest-monogram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.fixture-score {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-main);
+  min-width: 44px;
+  text-align: center;
+}
+
+.fixture-kickoff {
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 44px;
+  text-align: center;
+}
+
+.comp-chip {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--pill-border);
+  color: var(--pill-text);
+  white-space: nowrap;
+}
+
+.fixture-row.is-live .fixture-score,
+.fixture-row.is-live .fb-live-dot { color: var(--fb-live-accent); }
+
+.fb-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--fb-live-accent);
+  animation: fbPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes fbPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.flame-badge {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: #ff6d00;
+}
+
+.star-btn {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 4px;
+  line-height: 0;
+  color: var(--text-muted);
+  transition: color 200ms ease, transform 150ms ease;
+}
+
+.star-btn:hover { color: var(--input-focus-border); }
+.star-btn.pinned { color: #ffb300; }
+
+.fixture-pill {
+  cursor: pointer;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--pill-text);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+.fixture-pill.active {
+  background: var(--pill-active-bg);
+  color: var(--pill-active-text);
+  border-color: transparent;
+}
+
+.fb-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--subtab-bg);
+  border: 1px dashed var(--tab-border);
+  color: var(--text-main);
+  font-size: 12.5px;
+}
+
+.fb-banner svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--text-accent); }
+
+.fb-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 18px 10px;
+  font-size: 13px;
+}
+
+.fb-skeleton {
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--input-bg) 25%, var(--card-hover-bg) 50%, var(--input-bg) 75%);
+  background-size: 200% 100%;
+  animation: fbShimmer 1.2s infinite;
+}
+
+@keyframes fbShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.team-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.team-result {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: var(--input-bg);
+  color: var(--text-main);
+  font-size: 13px;
+  transition: border-color 200ms ease;
+}
+
+.team-result:hover { border-color: var(--input-focus-border); }
+
+.favorite-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.favorite-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 999px;
+  background: var(--subtab-bg);
+  border: 1px solid var(--tab-border);
+  color: var(--text-main);
+  font-size: 12px;
+}
+
+.favorite-chip button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+  font-weight: 700;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.pinned-list { display: flex; flex-direction: column; gap: 6px; }
+
+.history-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--badge-offline-bg);
+  color: var(--badge-offline-text);
+}
+
+.history-badge svg { width: 11px; height: 11px; }
