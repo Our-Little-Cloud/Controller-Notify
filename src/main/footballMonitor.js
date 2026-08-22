@@ -30,6 +30,7 @@ function createFootballMonitor({
   leagues = ['PL', 'PD', 'BL1', 'CL'],
   reminderMinutes = 15,
   liveBoost = true,
+  cupsEnabled = true,
   espnProvider = null,
   fdProvider = null,
   nowFn = () => Date.now(),
@@ -332,7 +333,7 @@ function createFootballMonitor({
     const merged = new Map(store.get(FIXTURES_KEY, []).map(f => [f.id, f]));
 
     // Phase 1: ESPN-only cup competitions (big-5), keyless
-    if (espnProvider && liveBoost) {
+    if (espnProvider && liveBoost && cupsEnabled) {
       for (let i = 0; i < EXTRA_LEAGUES.length; i++) {
         try {
           const cupFixtures = await espnProvider.fetchFixtures(EXTRA_LEAGUES[i].code, from, to);

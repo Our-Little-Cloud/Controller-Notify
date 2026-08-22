@@ -1848,3 +1848,27 @@ body {
 }
 
 .history-badge svg { width: 11px; height: 11px; }
+
+/* Chips/pills separation + borderless filter pills */
+.chips-divider {
+  border-top: 1px solid var(--section-border);
+  opacity: 0.6;
+}
+
+.fixture-pill {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.fixture-pill:hover {
+  color: var(--text-accent);
+  background: var(--fb-pitch-soft);
+}
+
+.fixture-pill.active {
+  background: var(--pill-active-bg);
+  color: var(--pill-active-text);
+}

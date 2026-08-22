@@ -47,6 +47,7 @@ const store = new Store({
     footballFavoriteTeams: [],
     footballPinnedFixtures: [],
     footballLeagues: ['PL', 'PD', 'BL1', 'CL'],
+    footballCupsEnabled: true,
     footballLiveBoost: true,
     matchReminderMinutes: 15,
     matchEventLog: {},
@@ -96,6 +97,7 @@ function buildFootballMonitor() {
     leagues: store.get('footballLeagues', ['PL', 'PD', 'BL1', 'CL']),
     reminderMinutes: store.get('matchReminderMinutes', 15),
     liveBoost: store.get('footballLiveBoost', true),
+    cupsEnabled: store.get('footballCupsEnabled', true),
     espnProvider,
     fdProvider,
     onFixtureEvent: (event) => {
@@ -600,6 +602,7 @@ ipcMain.handle('get-football-state', guardFootball(() => ({
   favoriteTeams: store.get('footballFavoriteTeams', []),
   pinnedFixtures: store.get('footballPinnedFixtures', []),
   leagues: store.get('footballLeagues', []),
+  cupsEnabled: store.get('footballCupsEnabled', true),
   liveBoost: store.get('footballLiveBoost', true),
   reminderMinutes: store.get('matchReminderMinutes', 15),
   status: footballMonitor ? footballMonitor.getStatus() : null
@@ -705,12 +708,23 @@ ipcMain.handle('toggle-pin-fixture', guardFootball((_, fixture) => {
   return { success: true, pinnedFixtures: updated };
 }));
 
-ipcMain.handle('set-football-leagues', guardFootball((_, leagues) => {
+ipcMain.handle('set-football-leagues', guardFootball((_, payload) => {
+  // Accepts { leagues, cupsEnabled } or a legacy bare array of league codes
+  const isArray = Array.isArray(payload);
+  const leagues = isArray ? payload : (payload.leagues || []);
+  const cupsEnabled = isArray ? undefined : payload.cupsEnabled;
   if (!Array.isArray(leagues)) throw new Error('leagues must be an array');
   const valid = leagues.filter(c => LEAGUES.some(l => l.code === c));
   store.set('footballLeagues', valid);
+  if (cupsEnabled !== undefined) {
+    store.set('footballCupsEnabled', cupsEnabled === true);
+  }
   startFootballIfEnabled();
-  return { success: true, leagues: valid };
+  return {
+    success: true,
+    leagues: valid,
+    cupsEnabled: store.get('footballCupsEnabled', true)
+  };
 }));
 
 ipcMain.handle('set-football-enabled', (_, enabled) => {

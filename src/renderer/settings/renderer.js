@@ -1025,9 +1025,10 @@ const LEAGUE_LABELS = {
   'ENG-FA': 'FA Cup', 'ENG-LC': 'Carabao Cup', 'ESP-CDR': 'Copa del Rey',
   'ITA-CI': 'Coppa Italia', 'GER-PK': 'DFB-Pokal', 'GER-SC': 'Supercup', 'FRA-TC': 'Trophée des Champions'
 };
+const FD_LEAGUE_CODES = ['PL', 'PD', 'SA', 'BL1', 'FL1', 'CL', 'WC', 'EC', 'ELC', 'DED', 'PPL', 'BSA'];
 
 let footballState = {
-  apiKey: '', favoriteTeams: [], pinnedFixtures: [], leagues: [], liveBoost: true, reminderMinutes: 15
+  apiKey: '', favoriteTeams: [], pinnedFixtures: [], leagues: [], cupsEnabled: true, liveBoost: true, reminderMinutes: 15
 };
 let fixturesCache = [];
 let activeFixtureFilter = 'all';
@@ -1068,6 +1069,7 @@ async function loadFootballTab() {
       favoriteTeams: state.favoriteTeams || [],
       pinnedFixtures: state.pinnedFixtures || [],
       leagues: state.leagues && state.leagues.length ? state.leagues : ['PL', 'PD', 'BL1', 'CL'],
+      cupsEnabled: state.cupsEnabled !== false,
       liveBoost: state.liveBoost !== false,
       reminderMinutes: state.reminderMinutes || 15
     };
@@ -1081,8 +1083,8 @@ async function loadFootballTab() {
     const sched = await window.api.getFootballSchedule();
     fixturesCache = (sched && sched.fixtures) || [];
 
-    renderLeagueChips(leagueChipsEl, footballState.leagues, toggleLeague);
-    renderLeagueChips(favLeagueChipsEl, [favSearchLeague], setFavSearchLeague);
+    renderLeagueChips(leagueChipsEl, footballState.leagues, footballState.cupsEnabled);
+    renderFavLeagueChips(favLeagueChipsEl, favSearchLeague);
     renderFavoriteTeams();
     renderPinnedFixtures();
     renderFixtures();
@@ -1093,13 +1095,48 @@ async function loadFootballTab() {
   }
 }
 
-function renderLeagueChips(container, activeCodes, onToggle) {
-  container.innerHTML = Object.keys(LEAGUE_LABELS).map(code => `
-    <button type="button" class="league-chip ${activeCodes.includes(code) ? 'active' : ''}" data-league="${code}">${LEAGUE_LABELS[code]}</button>
+function renderLeagueChips(container, activeCodes, cupsEnabled) {
+  const allActive = FD_LEAGUE_CODES.every(c => activeCodes.includes(c)) && cupsEnabled;
+  const chips = [
+    { code: '__ALL__', label: 'All', active: allActive },
+    ...FD_LEAGUE_CODES.map(code => ({ code, label: LEAGUE_LABELS[code], active: activeCodes.includes(code) })),
+    { code: '__CUPS__', label: 'Other Cup', active: cupsEnabled }
+  ];
+  container.innerHTML = chips.map(c => `
+    <button type="button" class="league-chip ${c.active ? 'active' : ''}" data-league="${c.code}">${c.label}</button>
   `).join('');
   container.querySelectorAll('.league-chip').forEach(chip => {
-    chip.addEventListener('click', () => onToggle(chip.dataset.league));
+    chip.addEventListener('click', () => {
+      const code = chip.dataset.league;
+      if (code === '__ALL__') selectAllLeagues();
+      else if (code === '__CUPS__') toggleCups();
+      else toggleLeague(code);
+    });
   });
+}
+
+async function saveLeagues() {
+  try {
+    await window.api.setFootballLeagues({
+      leagues: footballState.leagues,
+      cupsEnabled: footballState.cupsEnabled
+    });
+  } catch (error) {
+    console.error('Failed to save leagues:', error);
+  }
+  renderLeagueChips(leagueChipsEl, footballState.leagues, footballState.cupsEnabled);
+  renderFixtures();
+}
+
+function selectAllLeagues() {
+  footballState.leagues = [...FD_LEAGUE_CODES];
+  footballState.cupsEnabled = true;
+  saveLeagues();
+}
+
+async function toggleCups() {
+  footballState.cupsEnabled = !footballState.cupsEnabled;
+  await saveLeagues();
 }
 
 async function toggleLeague(code) {
@@ -1108,18 +1145,21 @@ async function toggleLeague(code) {
     : [...footballState.leagues, code];
   if (next.length === 0) return;
   footballState.leagues = next;
-  try {
-    await window.api.setFootballLeagues(next);
-  } catch (error) {
-    console.error('Failed to save leagues:', error);
-  }
-  renderLeagueChips(leagueChipsEl, next, toggleLeague);
-  renderFixtures();
+  await saveLeagues();
+}
+
+function renderFavLeagueChips(container, activeCode) {
+  container.innerHTML = FD_LEAGUE_CODES.map(code => `
+    <button type="button" class="league-chip ${code === activeCode ? 'active' : ''}" data-league="${code}">${LEAGUE_LABELS[code]}</button>
+  `).join('');
+  container.querySelectorAll('.league-chip').forEach(chip => {
+    chip.addEventListener('click', () => setFavSearchLeague(chip.dataset.league));
+  });
 }
 
 function setFavSearchLeague(code) {
   favSearchLeague = code;
-  renderLeagueChips(favLeagueChipsEl, [code], setFavSearchLeague);
+  renderFavLeagueChips(favLeagueChipsEl, code);
   if (teamSearchInput.value.trim()) runTeamSearch();
 }
 

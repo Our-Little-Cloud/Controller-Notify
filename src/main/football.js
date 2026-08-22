@@ -179,7 +179,8 @@ function createEspnProvider({ baseUrl = ESPN_BASE, fetchFn, onError = () => {} }
   }
 
   function eventToFixture(event, code, leagueName) {
-    const status = (event.status && event.status.type) || {};
+    const status = event.status || {};
+    const statusType = status.type || {};
     const competitors = ((event.competitions && event.competitions[0]) || {}).competitors || [];
     const home = competitors.find(c => c.homeAway === 'home');
     const away = competitors.find(c => c.homeAway === 'away');
@@ -187,8 +188,8 @@ function createEspnProvider({ baseUrl = ESPN_BASE, fetchFn, onError = () => {} }
     return {
       id: `espn:${event.id}`,
       kickoffUtc: event.date || null,
-      status: espnStatusFromState(status.state),
-      minute: event.status.displayClock || null,
+      status: espnStatusFromState(statusType.state),
+      minute: status.displayClock || null,
       homeTeam: { id: '', name: home.team && home.team.displayName || '', crest: home.team && home.team.logo || '' },
       awayTeam: { id: '', name: away.team && away.team.displayName || '', crest: away.team && away.team.logo || '' },
       competition: { code: code || '', name: leagueName || '' },
@@ -273,7 +274,7 @@ function createEspnProvider({ baseUrl = ESPN_BASE, fetchFn, onError = () => {} }
     const events = data.events || [];
     const states = [];
     for (const event of events) {
-      const status = (event.status && event.status.type) || {};
+      const statusType = (event.status && event.status.type) || {};
       const competitors = ((event.competitions && event.competitions[0]) || {}).competitors || [];
       const home = competitors.find(c => c.homeAway === 'home');
       const away = competitors.find(c => c.homeAway === 'away');
@@ -284,9 +285,9 @@ function createEspnProvider({ baseUrl = ESPN_BASE, fetchFn, onError = () => {} }
         competitionCode: code || '',
         homeName: home.team && home.team.displayName || '',
         awayName: away.team && away.team.displayName || '',
-        state: status.state || 'pre',
-        completed: Boolean(status.completed),
-        minute: event.status.displayClock || null,
+        state: statusType.state || 'pre',
+        completed: Boolean(statusType.completed),
+        minute: (event.status && event.status.displayClock) || null,
         scoreHome: home.score != null ? Number(home.score) : null,
         scoreAway: away.score != null ? Number(away.score) : null
       });

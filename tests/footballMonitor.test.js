@@ -219,6 +219,25 @@ describe('Football Monitor Tests', () => {
     assert.equal(cache[0].competition.code, 'GER-SC');
   });
 
+  it('cupsEnabled=false skips the extras sweep entirely', async () => {
+    const store = memoryStore();
+    let called = 0;
+    const espn = {
+      fetchLiveState: async () => [],
+      fetchFixtures: async () => { called++; return []; }
+    };
+    const mon = createFootballMonitor({
+      store,
+      favoriteTeams: [], pinnedFixtures: [], leagues: ['PL'], reminderMinutes: 15, liveBoost: true,
+      cupsEnabled: false,
+      espnProvider: espn, fdProvider: null,
+      nowFn: () => Date.now(), paceMs: 0,
+      onFixtureEvent: () => {}, onError: () => {}
+    });
+    await mon.checkSweep();
+    assert.equal(called, 0);
+  });
+
   it('sweep merges per-team ESPN schedules for resolved favorites and skips cross-source duplicates', async () => {
     const store = memoryStore({
       footballFixtures: [makeFixture('fd-dup', {})]
