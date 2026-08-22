@@ -3,6 +3,7 @@ const streamTitle = document.getElementById('streamTitle');
 const channelName = document.getElementById('channelName');
 const progressFill = document.getElementById('progressFill');
 const popup = document.getElementById('popup');
+const liveBadge = document.querySelector('.live-badge');
 
 const popupCloseBtn = document.getElementById('popupCloseBtn');
 
@@ -15,6 +16,12 @@ document.documentElement.setAttribute('data-theme', savedTheme);
 window.popupApi.onStreamData((data) => {
   const activeTheme = data.theme || localStorage.getItem('appTheme') || 'pink';
   document.documentElement.setAttribute('data-theme', activeTheme);
+
+  if (data.type === 'football') {
+    renderFootballPopup(data);
+    startProgressAnimation();
+    return;
+  }
 
   if (data.videoId) currentVideoId = data.videoId;
   if (data.title) streamTitle.textContent = data.title;
@@ -34,6 +41,26 @@ window.popupApi.onStreamData((data) => {
   
   startProgressAnimation();
 });
+
+function renderFootballPopup(data) {
+  currentVideoId = null;
+  controllerImage.classList.remove('has-img');
+  controllerImage.innerHTML = '';
+
+  const eventLabel = data.eventType === 'reminder' ? 'STARTS SOON'
+    : data.eventType === 'fulltime' ? 'FULL-TIME'
+      : data.minute ? `LIVE · ${data.minute}` : 'KICKED OFF';
+
+  if (liveBadge) liveBadge.textContent = `⚽ ${eventLabel}`;
+  if (data.reminderMinutes && data.eventType === 'reminder') {
+    liveBadge.textContent = `⚽ IN ${data.reminderMinutes} MIN`;
+  }
+
+  streamTitle.textContent = `${data.homeName} vs ${data.awayName}`;
+  const score = data.scoreHome != null ? ` ${data.scoreHome} - ${data.scoreAway} ` : '';
+  channelName.textContent = `${data.competitionCode || 'FOOTBALL'}${score}`;
+  channelName.classList.add('football-popup-meta');
+}
 
 function startProgressAnimation() {
   const duration = 10000;

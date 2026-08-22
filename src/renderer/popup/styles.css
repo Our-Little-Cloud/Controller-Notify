@@ -241,3 +241,8 @@ body {
     transform: none;
   }
 }
+/* Football popup variant */
+.football-popup-meta {
+  font-family: 'Consolas', 'Courier New', monospace;
+  letter-spacing: 1px;
+}
