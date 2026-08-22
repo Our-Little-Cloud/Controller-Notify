@@ -187,4 +187,76 @@ describe('Football Monitor Tests', () => {
     assert.equal(cache.length, 1);
     assert.equal(cache[0].id, 'tfx');
   });
+
+  it('sweep pulls big-5 cup fixtures from ESPN extras (Phase 1)', async () => {
+    const store = memoryStore();
+    const espn = {
+      fetchLiveState: async () => [],
+      fetchFixtures: async (code) => {
+        assert.equal(code, 'GER-SC');
+        return [{
+          id: 'espn:sc1',
+          kickoffUtc: new Date(KICKOFF).toISOString(),
+          status: 'scheduled',
+          minute: null,
+          homeTeam: { id: '', name: 'Bayern Munich', crest: '' },
+          awayTeam: { id: '', name: 'Borussia Dortmund', crest: '' },
+          competition: { code: 'GER-SC', name: 'German Supercup' },
+          score: { home: null, away: null }
+        }];
+      }
+    };
+    const mon = createFootballMonitor({
+      store,
+      favoriteTeams: [], pinnedFixtures: [], leagues: ['PL'], reminderMinutes: 15, liveBoost: true,
+      espnProvider: espn, fdProvider: null,
+      nowFn: () => Date.now(), paceMs: 0,
+      onFixtureEvent: () => {}, onError: () => {}
+    });
+    await mon.checkSweep();
+    const cache = store.get('footballFixtures', []);
+    assert.equal(cache.length, 1);
+    assert.equal(cache[0].competition.code, 'GER-SC');
+  });
+
+  it('sweep merges per-team ESPN schedules for resolved favorites and skips cross-source duplicates', async () => {
+    const store = memoryStore({
+      footballFixtures: [makeFixture('fd-dup', {})]
+    });
+    const espn = {
+      fetchLiveState: async () => [],
+      fetchFixtures: async () => [],
+      fetchTeamSchedule: async (slug, teamId) => {
+        assert.equal(slug, 'ger.1');
+        assert.equal(teamId, '132');
+        // Same real-world match already cached from fd.org (fd-dup), plus a cup match
+        return [
+          {
+            id: 'espn:dup1', kickoffUtc: new Date(KICKOFF).toISOString(), status: 'scheduled', minute: null,
+            homeTeam: { id: '', name: 'Arsenal', crest: '' }, awayTeam: { id: '', name: 'Chelsea', crest: '' },
+            competition: { code: '', name: '2026 German Bundesliga' }, score: { home: null, away: null }
+          },
+          {
+            id: 'espn:new1', kickoffUtc: new Date(KICKOFF + 3600000).toISOString(), status: 'scheduled', minute: null,
+            homeTeam: { id: '', name: 'Bayern Munich', crest: '' }, awayTeam: { id: '', name: 'Borussia Dortmund', crest: '' },
+            competition: { code: '', name: '2026 German SuperCup' }, score: { home: null, away: null }
+          }
+        ];
+      }
+    };
+    const mon = createFootballMonitor({
+      store,
+      favoriteTeams: [{ id: '132', name: 'Bayern Munich', crest: '', espnSlug: 'ger.1', espnTeamId: '132' }],
+      pinnedFixtures: [], leagues: ['PL'], reminderMinutes: 15, liveBoost: true,
+      espnProvider: espn, fdProvider: null,
+      nowFn: () => Date.now(), paceMs: 0,
+      onFixtureEvent: () => {}, onError: () => {}
+    });
+    await mon.checkSweep();
+    const cache = store.get('footballFixtures', []);
+    const ids = cache.map(f => f.id);
+    assert.ok(ids.includes('fd-dup'), 'existing fd fixture preserved');
+    assert.ok(ids.includes('espn:new1'), 'cup match added via team schedule');
+    assert.ok(!ids.includes('espn:dup1'), 'duplicate of cached fixture skipped');
+  });
 });

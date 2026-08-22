@@ -1021,7 +1021,9 @@ const SVG_ICONS = {
 const LEAGUE_LABELS = {
   PL: 'EPL', PD: 'La Liga', SA: 'Serie A', BL1: 'Bundesliga', FL1: 'Ligue 1',
   CL: 'UCL', WC: 'World Cup', EC: 'Euro', ELC: 'Championship', DED: 'Eredivisie',
-  PPL: 'Primeira', BSA: 'Brasileirão'
+  PPL: 'Primeira', BSA: 'Brasileirão',
+  'ENG-FA': 'FA Cup', 'ENG-LC': 'Carabao Cup', 'ESP-CDR': 'Copa del Rey',
+  'ITA-CI': 'Coppa Italia', 'GER-PK': 'DFB-Pokal', 'GER-SC': 'Supercup', 'FRA-TC': 'Trophée des Champions'
 };
 
 let footballState = {

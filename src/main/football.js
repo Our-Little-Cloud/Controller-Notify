@@ -7,7 +7,7 @@
 const { normalizeFixture } = require('./footballManager');
 
 const FD_BASE = 'https://api.football-data.org/v4';
-const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer';
+const ESPN_BASE = 'https://site.web.api.espn.com/apis/site/v2/sports/soccer';
 
 // Single registry: fd.org competition code is canonical, ESPN slug travels with it.
 const LEAGUES = [
@@ -25,8 +25,23 @@ const LEAGUES = [
   { code: 'BSA', name: 'Brasileirão Série A', espnSlug: 'bra.1' }
 ];
 
+/**
+ * ESPN-only cup competitions for the big-5 European countries (Phase 1):
+ * these have no fd.org free-tier competition, so their fixtures come purely
+ * from ESPN scoreboards. Slugs verified live 2026-08-22.
+ */
+const EXTRA_LEAGUES = [
+  { code: 'ENG-FA', name: 'FA Cup', espnSlug: 'eng.fa', source: 'espn' },
+  { code: 'ENG-LC', name: 'Carabao Cup', espnSlug: 'eng.league_cup', source: 'espn' },
+  { code: 'ESP-CDR', name: 'Copa del Rey', espnSlug: 'esp.copa_del_rey', source: 'espn' },
+  { code: 'ITA-CI', name: 'Coppa Italia', espnSlug: 'ita.coppa_italia', source: 'espn' },
+  { code: 'GER-PK', name: 'DFB-Pokal', espnSlug: 'ger.dfb_pokal', source: 'espn' },
+  { code: 'GER-SC', name: 'DFL-Supercup', espnSlug: 'ger.super_cup', source: 'espn' },
+  { code: 'FRA-TC', name: 'Trophée des Champions', espnSlug: 'fra.super_cup', source: 'espn' }
+];
+
 function espnSlugFor(code) {
-  const league = LEAGUES.find(l => l.code === code);
+  const league = [...LEAGUES, ...EXTRA_LEAGUES].find(l => l.code === code);
   return league ? league.espnSlug : null;
 }
 
@@ -149,14 +164,96 @@ function createFdProvider({
   return { name: 'football-data.org', fetchSchedule, fetchTeamFixtures, getThrottleState };
 }
 
+function espnStatusFromState(state) {
+  if (state === 'post') return 'finished';
+  if (state === 'in') return 'live';
+  return 'scheduled';
+}
+
 /**
  * Live Boost provider — ESPN public scoreboard (keyless, unofficial).
- * Returns flat live-state records; matching to fixtures happens in the monitor
- * via normalized club names (ESPN ids are never stored).
  */
-function createEspnProvider({ fetchFn, onError = () => {} } = {}) {
+function createEspnProvider({ baseUrl = ESPN_BASE, fetchFn, onError = () => {} } = {}) {
   if (typeof fetchFn !== 'function') {
     throw new Error('fetchFn is required');
+  }
+
+  function eventToFixture(event, code, leagueName) {
+    const status = (event.status && event.status.type) || {};
+    const competitors = ((event.competitions && event.competitions[0]) || {}).competitors || [];
+    const home = competitors.find(c => c.homeAway === 'home');
+    const away = competitors.find(c => c.homeAway === 'away');
+    if (!home || !away) return null;
+    return {
+      id: `espn:${event.id}`,
+      kickoffUtc: event.date || null,
+      status: espnStatusFromState(status.state),
+      minute: event.status.displayClock || null,
+      homeTeam: { id: '', name: home.team && home.team.displayName || '', crest: home.team && home.team.logo || '' },
+      awayTeam: { id: '', name: away.team && away.team.displayName || '', crest: away.team && away.team.logo || '' },
+      competition: { code: code || '', name: leagueName || '' },
+      score: {
+        home: home.score != null ? Number(home.score) : null,
+        away: away.score != null ? Number(away.score) : null
+      }
+    };
+  }
+
+  async function fetchJsonOk(url) {
+    let res;
+    try {
+      res = await fetchFn(url);
+    } catch (err) {
+      throw new Error(`ESPN network error for ${url}: ${err.message}`);
+    }
+    if (!res.ok) {
+      throw new Error(`ESPN request failed with HTTP ${res.status} (${url})`);
+    }
+    return res.json();
+  }
+
+  /**
+   * Phase 1: full fixture list for an EXTRA cup competition within a date
+   * range (scoreboard supports YYYYMMDD-YYYYMMDD ranges).
+   */
+  async function fetchFixtures(code, dateFrom, dateTo) {
+    const slug = espnSlugFor(code);
+    if (!slug) return [];
+    const compact = (d) => String(d).replace(/-/g, '');
+    const url = `${baseUrl}/${slug}/scoreboard?dates=${compact(dateFrom)}-${compact(dateTo)}`;
+    const data = await fetchJsonOk(url);
+    const leagueName = (data.leagues && data.leagues[0] && data.leagues[0].name) || '';
+    return (data.events || [])
+      .map(e => eventToFixture(e, code, leagueName))
+      .filter(Boolean);
+  }
+
+  /**
+   * Phase 2: a specific team's fixtures via its own schedule endpoint
+   * (?fixture=true unlocks the upcoming-fixture list). Covers ANY competition
+   * the team plays — cups, super cups — independent of league filters.
+   */
+  async function fetchTeamSchedule(slug, teamId) {
+    const url = `${baseUrl}/${slug}/teams/${encodeURIComponent(teamId)}/schedule?fixture=true`;
+    const data = await fetchJsonOk(url);
+    const leagueName = (data.season && data.season.displayName) || '';
+    return (data.events || [])
+      .map(e => eventToFixture(e, '', leagueName))
+      .filter(Boolean);
+  }
+
+  /**
+   * Phase 2: resolve ESPN team ids by listing a league's teams.
+   */
+  async function fetchTeamDirectory(slug) {
+    const url = `${baseUrl}/${slug}/teams`;
+    const data = await fetchJsonOk(url);
+    const teamsNode = data.sports && data.sports[0] && data.sports[0].leagues &&
+      data.sports[0].leagues[0] && data.sports[0].leagues[0].teams || [];
+    return teamsNode
+      .map(t => t.team)
+      .filter(Boolean)
+      .map(t => ({ id: String(t.id), name: t.displayName || t.name || '', espnSlug: slug }));
   }
 
   async function fetchLeagueState(slug, code) {
@@ -207,7 +304,13 @@ function createEspnProvider({ fetchFn, onError = () => {} } = {}) {
     return all;
   }
 
-  return { name: 'espn-live-boost', fetchLiveState };
+  return {
+    name: 'espn-live-boost',
+    fetchLiveState,
+    fetchFixtures,
+    fetchTeamSchedule,
+    fetchTeamDirectory
+  };
 }
 
-module.exports = { LEAGUES, createFdProvider, createEspnProvider };
+module.exports = { LEAGUES, EXTRA_LEAGUES, createFdProvider, createEspnProvider };

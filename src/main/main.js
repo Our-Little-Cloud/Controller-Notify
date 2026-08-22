@@ -19,7 +19,8 @@ const {
   removeFavoriteTeam,
   togglePinnedFixture,
   normalizeFixture,
-  isBigMatch
+  isBigMatch,
+  normalizeClubName
 } = require('./footballManager');
 const { createFootballMonitor, FIXTURES_KEY } = require('./footballMonitor');
 require('dotenv').config();
@@ -641,8 +642,48 @@ ipcMain.handle('search-football-teams', guardFootball(async (_, { query = '', co
   };
 }));
 
-ipcMain.handle('add-favorite-team', guardFootball((_, team) => {
-  const updated = addFavoriteTeam(store.get('footballFavoriteTeams', []), team);
+// Phase 2: resolve a favorite team's ESPN identity (slug + team id) by
+// scanning the big-5 league directories once each, cached in-memory.
+let espnDirectoryCache = {};
+function getEspnProvider() {
+  return createEspnProvider({
+    fetchFn: (url) => fetch(url),
+    onError: (err) => console.error('[ESPN]', err && err.stack ? err.stack : err)
+  });
+}
+
+async function resolveEspnIdentity(name) {
+  const provider = getEspnProvider();
+  const slugs = ['ger.1', 'eng.1', 'esp.1', 'ita.1', 'fra.1'];
+  for (const slug of slugs) {
+    try {
+      if (!espnDirectoryCache[slug]) {
+        espnDirectoryCache[slug] = await provider.fetchTeamDirectory(slug);
+      }
+      const hit = espnDirectoryCache[slug].find(t =>
+        normalizeClubName(t.name) === normalizeClubName(name)
+      );
+      if (hit) return { espnSlug: hit.espnSlug, espnTeamId: hit.id };
+    } catch (err) {
+      console.error(`[Football] ESPN directory ${slug} failed:`, err.stack || err);
+    }
+  }
+  return null;
+}
+
+ipcMain.handle('add-favorite-team', guardFootball(async (_, team) => {
+  let updated = addFavoriteTeam(store.get('footballFavoriteTeams', []), team);
+  // Best-effort: attach ESPN identity so per-team schedules cover cup matches too
+  try {
+    const identity = await resolveEspnIdentity(team.name || (updated[updated.length - 1] || {}).name);
+    if (identity) {
+      updated = updated.map(t =>
+        normalizeClubName(t.name) === normalizeClubName(team.name || '') ? { ...t, ...identity } : t
+      );
+    }
+  } catch (err) {
+    console.error('[Football] ESPN identity resolution failed:', err.stack || err);
+  }
   store.set('footballFavoriteTeams', updated);
   startFootballIfEnabled();
   return { success: true, favoriteTeams: updated };

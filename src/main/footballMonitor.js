@@ -10,6 +10,7 @@ const {
   isWatchedFixture,
   normalizeClubName
 } = require('./footballManager');
+const { EXTRA_LEAGUES } = require('./football');
 
 const FIXTURES_KEY = 'footballFixtures';
 const EVENT_LOG_KEY = 'matchEventLog';
@@ -311,45 +312,92 @@ function createFootballMonitor({
     return statuses;
   }
 
-  /** Sweeper tick: refresh next-8-days schedules for enabled leagues (fd.org). */
+  function sameFixture(a, b) {
+    if (!a || !b) return false;
+    const sameSides =
+      normalizeClubName(a.homeTeam && a.homeTeam.name) === normalizeClubName(b.homeTeam && b.homeTeam.name) &&
+      normalizeClubName(a.awayTeam && a.awayTeam.name) === normalizeClubName(b.awayTeam && b.awayTeam.name);
+    const sameDay = a.kickoffUtc && b.kickoffUtc &&
+      new Date(a.kickoffUtc).toDateString() === new Date(b.kickoffUtc).toDateString();
+    return sameSides && (sameDay || !a.kickoffUtc || !b.kickoffUtc);
+  }
+
+  /** Sweeper tick: refresh schedules — fd.org leagues, ESPN big-5 cups,
+   *  and per-team ESPN schedules for resolved favorites. */
   async function checkSweep() {
     lastSweep = Date.now();
-    if (!fdProvider) {
-      onError(new Error('checkSweep skipped: no fd.org provider configured'));
-      return getStatus();
-    }
     const dayMs = 24 * 60 * 60 * 1000;
     const from = new Date(nowFn() - dayMs).toISOString().slice(0, 10);
     const to = new Date(nowFn() + 7 * dayMs).toISOString().slice(0, 10);
     const merged = new Map(store.get(FIXTURES_KEY, []).map(f => [f.id, f]));
 
-    for (let i = 0; i < leagues.length; i++) {
-      const code = leagues[i];
-      try {
-        const fixtures = await fdProvider.fetchSchedule(code, from, to);
-        for (const f of fixtures) merged.set(f.id, f);
-      } catch (err) {
-        err.message = `football-data.org ${code} sweep failed: ${err.message}`;
-        onError(err, code);
+    // Phase 1: ESPN-only cup competitions (big-5), keyless
+    if (espnProvider && liveBoost) {
+      for (let i = 0; i < EXTRA_LEAGUES.length; i++) {
+        try {
+          const cupFixtures = await espnProvider.fetchFixtures(EXTRA_LEAGUES[i].code, from, to);
+          for (const f of cupFixtures) {
+            const dup = [...merged.values()].find(existing => existing.id === f.id || sameFixture(existing, f));
+            if (!dup) merged.set(f.id, f);
+          }
+        } catch (err) {
+          err.message = `ESPN ${EXTRA_LEAGUES[i].code} sweep failed: ${err.message}`;
+          onError(err, EXTRA_LEAGUES[i].code);
+        }
+        if (paceMs > 0 && i < EXTRA_LEAGUES.length - 1) {
+          await new Promise(res => setTimeout(res, paceMs));
+        }
       }
-      if (paceMs > 0 && i < leagues.length - 1) {
-        await new Promise(res => setTimeout(res, paceMs));
+
+      // Phase 2: per-team schedules for favorites resolved with an ESPN identity
+      const espnFavorites = favoriteTeams.filter(t => t.espnSlug && t.espnTeamId);
+      for (let i = 0; i < espnFavorites.length; i++) {
+        const fav = espnFavorites[i];
+        try {
+          const teamFixtures = await espnProvider.fetchTeamSchedule(fav.espnSlug, fav.espnTeamId);
+          for (const f of teamFixtures) {
+            const dup = [...merged.values()].find(existing => existing.id === f.id || sameFixture(existing, f));
+            if (!dup) merged.set(f.id, { ...f, viaFavorite: fav.name });
+          }
+        } catch (err) {
+          err.message = `ESPN team schedule for ${fav.name} (${fav.espnSlug}/${fav.espnTeamId}) failed: ${err.message}`;
+          onError(err, fav.espnSlug);
+        }
+        if (paceMs > 0 && i < espnFavorites.length - 1) {
+          await new Promise(res => setTimeout(res, paceMs));
+        }
       }
     }
 
-    // Favorite teams: fetch their fixtures across ALL competitions so
-    // matches outside enabled leagues still surface (plan Q10).
-    const keyedFavorites = favoriteTeams.filter(t => t.id && /^\d+$/.test(String(t.id)));
-    for (let i = 0; i < keyedFavorites.length; i++) {
-      try {
-        const teamFixtures = await fdProvider.fetchTeamFixtures(keyedFavorites[i].id, from, to);
-        for (const f of teamFixtures) merged.set(f.id, f);
-      } catch (err) {
-        err.message = `football-data.org team ${keyedFavorites[i].id} fixtures failed: ${err.message}`;
-        onError(err, keyedFavorites[i].id);
+    if (fdProvider) {
+      for (let i = 0; i < leagues.length; i++) {
+        const code = leagues[i];
+        try {
+          const fixtures = await fdProvider.fetchSchedule(code, from, to);
+          for (const f of fixtures) merged.set(f.id, f);
+        } catch (err) {
+          err.message = `football-data.org ${code} sweep failed: ${err.message}`;
+          onError(err, code);
+        }
+        if (paceMs > 0 && i < leagues.length - 1) {
+          await new Promise(res => setTimeout(res, paceMs));
+        }
       }
-      if (paceMs > 0 && i < keyedFavorites.length - 1) {
-        await new Promise(res => setTimeout(res, paceMs));
+
+      // Favorite teams: fetch their fixtures across ALL competitions so
+      // matches outside enabled leagues still surface (plan Q10).
+      const keyedFavorites = favoriteTeams.filter(t => t.id && /^\d+$/.test(String(t.id)));
+      for (let i = 0; i < keyedFavorites.length; i++) {
+        try {
+          const teamFixtures = await fdProvider.fetchTeamFixtures(keyedFavorites[i].id, from, to);
+          for (const f of teamFixtures) merged.set(f.id, f);
+        } catch (err) {
+          err.message = `football-data.org team ${keyedFavorites[i].id} fixtures failed: ${err.message}`;
+          onError(err, keyedFavorites[i].id);
+        }
+        if (paceMs > 0 && i < keyedFavorites.length - 1) {
+          await new Promise(res => setTimeout(res, paceMs));
+        }
       }
     }
 

@@ -2,12 +2,30 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   LEAGUES,
+  EXTRA_LEAGUES,
   createFdProvider,
   createEspnProvider
 } = require('../src/main/football');
 
 function headersLike(map) {
   return { get: (name) => map[String(name).toLowerCase()] ?? null };
+}
+
+function espnEventJson(id, state, opts = {}) {
+  return {
+    id,
+    date: opts.date || '2026-08-22T18:30Z',
+    status: {
+      displayClock: opts.minute || null,
+      type: { state, completed: state === 'post' }
+    },
+    competitions: [{
+      competitors: [
+        { homeAway: 'home', score: opts.home != null ? String(opts.home) : null, team: { displayName: opts.homeName || 'Bayern Munich' } },
+        { homeAway: 'away', score: opts.away != null ? String(opts.away) : null, team: { displayName: opts.awayName || 'Borussia Dortmund' } }
+      ]
+    }]
+  };
 }
 
 describe('Football Providers Tests', () => {
@@ -67,6 +85,103 @@ describe('Football Providers Tests', () => {
       await assert.rejects(() => provider.fetchSchedule('PL', 'a', 'b'), /429/);
       assert.equal(calls, 2);
       assert.ok(delays.some(d => d >= 60000), 'default bounded backoff of ~60s applied when no reset header');
+    });
+  });
+
+  describe('ESPN extra competitions (big-5 cups, Phase 1)', () => {
+    it('registers the verified big-5 cup slugs without colliding with fd.org codes', () => {
+      const fdCodes = new Set(LEAGUES.map(l => l.code));
+      const expected = [
+        ['ENG-FA', 'eng.fa'],
+        ['ENG-LC', 'eng.league_cup'],
+        ['ESP-CDR', 'esp.copa_del_rey'],
+        ['ITA-CI', 'ita.coppa_italia'],
+        ['GER-PK', 'ger.dfb_pokal'],
+        ['GER-SC', 'ger.super_cup'],
+        ['FRA-TC', 'fra.super_cup']
+      ];
+      assert.ok(EXTRA_LEAGUES.length >= expected.length);
+      for (const [code, slug] of expected) {
+        const entry = EXTRA_LEAGUES.find(l => l.code === code);
+        assert.ok(entry, `missing extra league ${code}`);
+        assert.equal(entry.espnSlug, slug);
+        assert.equal(entry.source, 'espn');
+        assert.ok(!fdCodes.has(code), `${code} must not collide with fd.org codes`);
+      }
+    });
+
+    it('fetchFixtures maps scoreboard events (incl. scheduled) to fixture shape', async () => {
+      let captured;
+      const fetchFn = async (url) => {
+        captured = url;
+        return {
+          ok: true, status: 200,
+          json: async () => ({
+            leagues: [{ name: 'German Supercup' }],
+            events: [
+              espnEventJson('e1', 'pre', { date: '2026-08-22T18:30Z' }),
+              espnEventJson('e2', 'in', { minute: "12'", home: 1, away: 0 })
+            ]
+          })
+        };
+      };
+      const provider = createEspnProvider({ fetchFn });
+      const fixtures = await provider.fetchFixtures('GER-SC', '2026-08-21', '2026-08-28');
+
+      assert.ok(captured.includes('soccer/ger.super_cup/scoreboard'));
+      assert.ok(captured.includes('dates=20260821-20260828'), `expected ESPN date range in ${captured}`);
+      assert.equal(fixtures.length, 2);
+      const scheduled = fixtures[0];
+      assert.equal(scheduled.status, 'scheduled');
+      assert.equal(scheduled.homeTeam.name, 'Bayern Munich');
+      assert.equal(scheduled.competition.code, 'GER-SC');
+      assert.equal(fixtures[1].status, 'live');
+      assert.equal(fixtures[1].score.home, 1);
+    });
+
+    it('fetchTeamSchedule uses fixture=true and maps team fixtures across cups', async () => {
+      let captured;
+      const fetchFn = async (url) => {
+        captured = url;
+        return {
+          ok: true, status: 200,
+          json: async () => ({
+            team: { displayName: 'Bayern Munich' },
+            events: [espnEventJson('supercup-e1', 'in', { minute: "34'", home: 0, away: 1 })]
+          })
+        };
+      };
+      const provider = createEspnProvider({ fetchFn });
+      const fixtures = await provider.fetchTeamSchedule('ger.1', '132');
+
+      assert.ok(captured.includes('/teams/132/schedule?fixture=true'), `unexpected URL ${captured}`);
+      assert.equal(fixtures.length, 1);
+      assert.equal(fixtures[0].status, 'live');
+      assert.equal(fixtures[0].awayTeam.name, 'Borussia Dortmund');
+    });
+
+    it('fetchTeamDirectory resolves ESPN team ids from the big-5 league teams list', async () => {
+      let captured;
+      const fetchFn = async (url) => {
+        captured = url;
+        return {
+          ok: true, status: 200,
+          json: async () => ({
+            sports: [{ leagues: [{ teams: [
+              { team: { id: '598', displayName: '1. FC Union Berlin' } },
+              { team: { id: '132', displayName: 'Bayern Munich' } }
+            ] }] }]
+          })
+        };
+      };
+      const provider = createEspnProvider({ fetchFn });
+      const directory = await provider.fetchTeamDirectory('ger.1');
+
+      assert.ok(captured.includes('soccer/ger.1/teams'));
+      assert.deepEqual(directory, [
+        { id: '598', name: '1. FC Union Berlin', espnSlug: 'ger.1' },
+        { id: '132', name: 'Bayern Munich', espnSlug: 'ger.1' }
+      ]);
     });
 
     it('requires an api key at construction', () => {
