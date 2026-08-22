@@ -1,6 +1,6 @@
 {
   "name": "controller-notify",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A cute desktop companion that notifies you when your favorite YouTube streamer goes live",
   "main": "src/main/main.js",
   "scripts": {
