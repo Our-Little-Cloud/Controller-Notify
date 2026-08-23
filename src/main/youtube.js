@@ -8,6 +8,66 @@ const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 5, keepAliveMs
 
 const YOUTUBE_API_BASE = 'https://www.googleapis.com/youtube/v3';
 
+const WIN1252_MAP = {
+  '\u20AC': 0x80, '\u201A': 0x82, '\u0192': 0x83, '\u201E': 0x84, '\u2026': 0x85,
+  '\u2020': 0x86, '\u2021': 0x87, '\u02C6': 0x88, '\u2030': 0x89, '\u0160': 0x8A,
+  '\u2039': 0x8B, '\u0152': 0x8C, '\u017D': 0x8E, '\u2018': 0x91, '\u2019': 0x92,
+  '\u201C': 0x93, '\u201D': 0x94, '\u2022': 0x95, '\u2013': 0x96, '\u2014': 0x97,
+  '\u02DC': 0x98, '\u2122': 0x99, '\u0161': 0x9A, '\u203A': 0x9B, '\u0153': 0x9C,
+  '\u017E': 0x9E, '\u0178': 0x9F
+};
+
+function fixMojibake(str) {
+  if (!str || typeof str !== 'string') return str;
+  if (!/[\u0080-\u00FF\u0152\u0153\u0160\u0161\u017D\u017E\u0178\u0192\u02C6\u02DC\u2013\u2014\u2018\u2019\u201A\u201C\u201D\u201E\u2020\u2021\u2022\u2026\u2030\u2039\u203A\u20AC\u2122]/.test(str)) {
+    return str;
+  }
+  try {
+    const bytes = [];
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+      const code = ch.charCodeAt(0);
+      if (code < 128) {
+        bytes.push(code);
+      } else if (WIN1252_MAP[ch] !== undefined) {
+        bytes.push(WIN1252_MAP[ch]);
+      } else if (code <= 255) {
+        bytes.push(code);
+      } else {
+        return str;
+      }
+    }
+    const buf = Buffer.from(bytes);
+    const decoded = buf.toString('utf8');
+    if (!decoded.includes('\uFFFD')) return decoded;
+  } catch (e) {
+    // Return original on decode failure
+  }
+  return str;
+}
+
+function decodeHtmlEntities(str) {
+  if (!str || typeof str !== 'string') return str;
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, dec) => {
+      try { return String.fromCodePoint(parseInt(dec, 10)); } catch (e) { return _; }
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      try { return String.fromCodePoint(parseInt(hex, 16)); } catch (e) { return _; }
+    });
+}
+
+function sanitizeString(str) {
+  if (!str || typeof str !== 'string') return str;
+  return fixMojibake(decodeHtmlEntities(str));
+}
+
 async function checkLiveStatus(apiKey, channelId) {
   if (!apiKey || !channelId) {
     throw new Error('API key and channel ID are required');
@@ -35,8 +95,8 @@ async function checkLiveStatus(apiKey, channelId) {
       return {
         isLive: true,
         videoId: video.id.videoId,
-        title: video.snippet.title,
-        channelTitle: video.snippet.channelTitle,
+        title: sanitizeString(video.snippet.title),
+        channelTitle: sanitizeString(video.snippet.channelTitle),
         thumbnail: video.snippet.thumbnails.high?.url || video.snippet.thumbnails.default?.url,
         publishedAt: video.snippet.publishedAt
       };
@@ -183,13 +243,13 @@ async function checkLiveStatusFree(channelIdentifier) {
       let title = 'Live Stream';
       const titleMatch = html.match(/<meta property="og:title" content="([^"]+)"/) || html.match(/<title>([^<]+)<\/title>/);
       if (titleMatch) {
-        title = titleMatch[1].replace(/ - YouTube$/, '').trim();
+        title = sanitizeString(titleMatch[1].replace(/ - YouTube$/, '').trim());
       }
 
       let channelTitle = trimmed;
       const authorMatch = html.match(/<meta name="author" content="([^"]+)"/) || html.match(/<link itemprop="name" content="([^"]+)"/);
       if (authorMatch) {
-        channelTitle = authorMatch[1];
+        channelTitle = sanitizeString(authorMatch[1]);
       }
 
       let thumbnail = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '';
@@ -201,8 +261,8 @@ async function checkLiveStatusFree(channelIdentifier) {
       return {
         isLive: true,
         videoId: videoId || 'live',
-        title,
-        channelTitle,
+        title: sanitizeString(title),
+        channelTitle: sanitizeString(channelTitle),
         thumbnail,
         publishedAt: new Date().toISOString()
       };
@@ -241,4 +301,12 @@ async function checkLiveStatusUnified({ apiKey, channelId, channelUrl }) {
   return await checkLiveStatusFree(target);
 }
 
-module.exports = { checkLiveStatus, getChannelIdFromUrl, checkLiveStatusFree, checkLiveStatusUnified };
+module.exports = {
+  checkLiveStatus,
+  getChannelIdFromUrl,
+  checkLiveStatusFree,
+  checkLiveStatusUnified,
+  decodeHtmlEntities,
+  fixMojibake,
+  sanitizeString
+};

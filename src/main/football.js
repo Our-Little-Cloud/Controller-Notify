@@ -45,7 +45,25 @@ function espnSlugFor(code) {
   return league ? league.espnSlug : null;
 }
 
+function codeForEspnSlug(slug) {
+  if (!slug) return '';
+  const league = [...LEAGUES, ...EXTRA_LEAGUES].find(l => l.espnSlug === slug);
+  return league ? league.code : '';
+}
+
+function getTeamCrest(teamObj) {
+  if (!teamObj) return '';
+  if (teamObj.logo) return teamObj.logo;
+  if (Array.isArray(teamObj.logos) && teamObj.logos.length > 0 && teamObj.logos[0].href) {
+    return teamObj.logos[0].href;
+  }
+  return '';
+}
+
 /**
+ * @deprecated football-data.org provider — no longer wired in production
+ * (main.js uses ESPN as the sole source). Kept for potential future use.
+ *
  * Primary provider — football-data.org v4.
  * Throttling follows the documented policy (docs.football-data.org/general/v4/policies.html):
  * free plan = 10 requests/minute. We combine a polite fixed pacing gap with
@@ -181,18 +199,21 @@ function createEspnProvider({ baseUrl = ESPN_BASE, fetchFn, onError = () => {} }
   function eventToFixture(event, code, leagueName) {
     const status = event.status || {};
     const statusType = status.type || {};
-    const competitors = ((event.competitions && event.competitions[0]) || {}).competitors || [];
+    const competitions = event.competitions || [];
+    const comp = competitions[0] || {};
+    const competitors = comp.competitors || [];
     const home = competitors.find(c => c.homeAway === 'home');
     const away = competitors.find(c => c.homeAway === 'away');
     if (!home || !away) return null;
+    const resolvedCode = code || (event.league && codeForEspnSlug(event.league.slug)) || '';
     return {
       id: `espn:${event.id}`,
       kickoffUtc: event.date || null,
       status: espnStatusFromState(statusType.state),
       minute: status.displayClock || null,
-      homeTeam: { id: '', name: home.team && home.team.displayName || '', crest: home.team && home.team.logo || '' },
-      awayTeam: { id: '', name: away.team && away.team.displayName || '', crest: away.team && away.team.logo || '' },
-      competition: { code: code || '', name: leagueName || '' },
+      homeTeam: { id: '', name: home.team && home.team.displayName || '', crest: getTeamCrest(home.team) },
+      awayTeam: { id: '', name: away.team && away.team.displayName || '', crest: getTeamCrest(away.team) },
+      competition: { code: resolvedCode, name: leagueName || '' },
       score: {
         home: home.score != null ? Number(home.score) : null,
         away: away.score != null ? Number(away.score) : null
@@ -237,9 +258,11 @@ function createEspnProvider({ baseUrl = ESPN_BASE, fetchFn, onError = () => {} }
   async function fetchTeamSchedule(slug, teamId) {
     const url = `${baseUrl}/${slug}/teams/${encodeURIComponent(teamId)}/schedule?fixture=true`;
     const data = await fetchJsonOk(url);
-    const leagueName = (data.season && data.season.displayName) || '';
+    const leagueSlug = (data.league && data.league.slug) || slug;
+    const leagueCode = codeForEspnSlug(leagueSlug);
+    const leagueName = (data.league && data.league.name) || (data.season && data.season.displayName) || '';
     return (data.events || [])
-      .map(e => eventToFixture(e, '', leagueName))
+      .map(e => eventToFixture(e, leagueCode, leagueName))
       .filter(Boolean);
   }
 
@@ -309,6 +332,7 @@ function createEspnProvider({ baseUrl = ESPN_BASE, fetchFn, onError = () => {} }
     name: 'espn-live-boost',
     fetchLiveState,
     fetchFixtures,
+    fetchSchedule: fetchFixtures,
     fetchTeamSchedule,
     fetchTeamDirectory
   };

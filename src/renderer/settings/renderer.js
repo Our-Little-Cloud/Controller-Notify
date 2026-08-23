@@ -1028,7 +1028,7 @@ const LEAGUE_LABELS = {
 const FD_LEAGUE_CODES = ['PL', 'PD', 'SA', 'BL1', 'FL1', 'CL', 'WC', 'EC', 'ELC', 'DED', 'PPL', 'BSA'];
 
 let footballState = {
-  apiKey: '', favoriteTeams: [], pinnedFixtures: [], leagues: [], cupsEnabled: true, liveBoost: true, reminderMinutes: 15
+  apiKey: '', favoriteTeams: [], pinnedFixtures: [], leagues: [], allMode: true, cupsEnabled: true, liveBoost: true, reminderMinutes: 15
 };
 let fixturesCache = [];
 let activeFixtureFilter = 'all';
@@ -1045,11 +1045,48 @@ const teamSearchResultsEl = document.getElementById('teamSearchResults');
 const teamSearchHelpEl = document.getElementById('teamSearchHelp');
 const favoriteTeamsListEl = document.getElementById('favoriteTeamsList');
 const pinnedFixturesListEl = document.getElementById('pinnedFixturesList');
-const footballApiKeyInput = document.getElementById('footballApiKeyInput');
-const saveFootballKeyBtn = document.getElementById('saveFootballKeyBtn');
-const footballKeyResult = document.getElementById('footballKeyResult');
 const reminderMinutesInput = document.getElementById('reminderMinutesInput');
 const liveBoostCheckbox = document.getElementById('liveBoostCheckbox');
+
+// Centered Date Navigator Elements
+const fbDateNav = document.getElementById('fbDateNav');
+const fbPrevDayBtn = document.getElementById('fbPrevDayBtn');
+const fbNextDayBtn = document.getElementById('fbNextDayBtn');
+const fbDateCenter = document.getElementById('fbDateCenter');
+const fbDateTitle = document.getElementById('fbDateTitle');
+const fbDateBadge = document.getElementById('fbDateBadge');
+const fbTodayQuickBtn = document.getElementById('fbTodayQuickBtn');
+
+let selectedDateOffset = 0; // 0 = Today, -1 = Yesterday, +1 = Tomorrow, etc.
+
+function getOffsetDate(offsetDays = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d;
+}
+
+function formatDateNavTitle(date, offsetDays) {
+  const weekday = date.toLocaleDateString(undefined, { weekday: 'short' });
+  const monthDay = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  if (offsetDays === 0) {
+    return `Today · ${weekday}, ${monthDay}`;
+  } else if (offsetDays === 1) {
+    return `Tomorrow · ${weekday}, ${monthDay}`;
+  } else if (offsetDays === -1) {
+    return `Yesterday · ${weekday}, ${monthDay}`;
+  }
+  return `${weekday}, ${monthDay}`;
+}
+
+function changeDateOffset(delta) {
+  selectedDateOffset += delta;
+  renderFixtures();
+}
+
+function resetToToday() {
+  selectedDateOffset = 0;
+  renderFixtures();
+}
 
 function applyFootballVisibility(enabled) {
   const btn = document.querySelector('.tab-btn[data-tab="football"]');
@@ -1068,22 +1105,20 @@ async function loadFootballTab() {
       apiKey: state.apiKey || '',
       favoriteTeams: state.favoriteTeams || [],
       pinnedFixtures: state.pinnedFixtures || [],
-      leagues: state.leagues && state.leagues.length ? state.leagues : ['PL', 'PD', 'BL1', 'CL'],
+      leagues: state.leagues || [],
+      allMode: state.allLeagues !== false,
       cupsEnabled: state.cupsEnabled !== false,
       liveBoost: state.liveBoost !== false,
       reminderMinutes: state.reminderMinutes || 15
     };
-    footballApiKeyInput.value = footballState.apiKey;
     reminderMinutesInput.value = footballState.reminderMinutes;
     liveBoostCheckbox.checked = footballState.liveBoost;
-    teamSearchHelpEl.textContent = footballState.apiKey
-      ? 'API key active — searching bundled top clubs.'
-      : 'No API key: searching bundled top clubs. Add a free key below for full schedules.';
+    teamSearchHelpEl.textContent = 'Searching bundled top clubs — fixtures come from ESPN after favoriting.';
 
     const sched = await window.api.getFootballSchedule();
     fixturesCache = (sched && sched.fixtures) || [];
 
-    renderLeagueChips(leagueChipsEl, footballState.leagues, footballState.cupsEnabled);
+    renderLeagueChips(leagueChipsEl, footballState.leagues, footballState.cupsEnabled, footballState.allMode);
     renderFavLeagueChips(favLeagueChipsEl, favSearchLeague);
     renderFavoriteTeams();
     renderPinnedFixtures();
@@ -1095,12 +1130,13 @@ async function loadFootballTab() {
   }
 }
 
-function renderLeagueChips(container, activeCodes, cupsEnabled) {
-  const allActive = FD_LEAGUE_CODES.every(c => activeCodes.includes(c)) && cupsEnabled;
+function renderLeagueChips(container, activeCodes, cupsEnabled, allMode) {
+  // "All" is an exclusive mode: only All is bold; individual chips are bold
+  // only after leaving All mode by clicking one of them.
   const chips = [
-    { code: '__ALL__', label: 'All', active: allActive },
-    ...FD_LEAGUE_CODES.map(code => ({ code, label: LEAGUE_LABELS[code], active: activeCodes.includes(code) })),
-    { code: '__CUPS__', label: 'Other Cup', active: cupsEnabled }
+    { code: '__ALL__', label: 'All', active: !!allMode },
+    ...FD_LEAGUE_CODES.map(code => ({ code, label: LEAGUE_LABELS[code], active: !allMode && activeCodes.includes(code) })),
+    { code: '__CUPS__', label: 'Other Cup', active: !!cupsEnabled }
   ];
   container.innerHTML = chips.map(c => `
     <button type="button" class="league-chip ${c.active ? 'active' : ''}" data-league="${c.code}">${c.label}</button>
@@ -1116,21 +1152,23 @@ function renderLeagueChips(container, activeCodes, cupsEnabled) {
 }
 
 async function saveLeagues() {
+  // Optimistic UI: chips reflect the new state immediately, even if the IPC
+  // call is slow or fails (error only logged; state re-syncs on next load).
+  renderLeagueChips(leagueChipsEl, footballState.leagues, footballState.cupsEnabled, footballState.allMode);
+  renderFixtures();
   try {
     await window.api.setFootballLeagues({
+      all: footballState.allMode,
       leagues: footballState.leagues,
       cupsEnabled: footballState.cupsEnabled
     });
   } catch (error) {
     console.error('Failed to save leagues:', error);
   }
-  renderLeagueChips(leagueChipsEl, footballState.leagues, footballState.cupsEnabled);
-  renderFixtures();
 }
 
 function selectAllLeagues() {
-  footballState.leagues = [...FD_LEAGUE_CODES];
-  footballState.cupsEnabled = true;
+  footballState.allMode = true;
   saveLeagues();
 }
 
@@ -1140,11 +1178,14 @@ async function toggleCups() {
 }
 
 async function toggleLeague(code) {
-  const next = footballState.leagues.includes(code)
-    ? footballState.leagues.filter(c => c !== code)
-    : [...footballState.leagues, code];
-  if (next.length === 0) return;
-  footballState.leagues = next;
+  // Clicking a league chip exits All mode and selects that chip; clicking a
+  // selected chip deselects it (multi-select across clicks).
+  footballState.allMode = false;
+  if (footballState.leagues.includes(code)) {
+    footballState.leagues = footballState.leagues.filter(c => c !== code);
+  } else {
+    footballState.leagues = [...footballState.leagues, code];
+  }
   await saveLeagues();
 }
 
@@ -1164,8 +1205,8 @@ function setFavSearchLeague(code) {
 }
 
 function updateFootballBanner() {
-  if (!footballState.apiKey && fixturesCache.length === 0) {
-    footballBannerEl.innerHTML = `${SVG_ICONS.key}<span><strong>Add your free key</strong> from football-data.org to unlock the full fixture schedule. Favoriting teams already works without one!</span>`;
+  if (fixturesCache.length === 0) {
+    footballBannerEl.innerHTML = `${SVG_ICONS.key}<span>Fixtures load automatically from ESPN — favorite teams above (⭐ Favorites) and press 🔄 Refresh.</span>`;
     footballBannerEl.style.display = 'flex';
   } else {
     footballBannerEl.style.display = 'none';
@@ -1213,64 +1254,91 @@ function monogramHtml(name) {
 }
 
 function renderFixtures() {
-  const now = Date.now();
+  try {
+    renderFixturesInner();
+  } catch (error) {
+    console.error('Failed to render fixtures:', error);
+    fixturesListEl.innerHTML = '<div class="fb-empty">Failed to render fixtures — check the console.</div>';
+  }
+}
+
+function renderFixturesInner() {
+  const targetDate = getOffsetDate(selectedDateOffset);
+  const targetDateString = targetDate.toDateString();
+
   let list = fixturesCache.filter(f => {
-    if (activeFixtureFilter === 'favorites') return isFavoriteSide(f);
+    if (activeFixtureFilter === 'favorites') return f.watched || isFavoriteSide(f);
     if (activeFixtureFilter === 'live') return f.status === 'live';
     if (activeFixtureFilter === 'finished') return f.status === 'finished';
     return true;
   });
 
-  // Favorites' and pinned fixtures always shown; others must pass league filter (Q10)
+  // All mode shows everything; otherwise watched fixtures (favorite team
+  // playing or pinned, matched server-side via cross-provider club identity)
+  // always pass and other fixtures must match an enabled league chip (Q10).
   list = list.filter(f =>
-    isFavoriteSide(f) || isPinned(f) || footballState.leagues.includes(f.competition.code)
+    footballState.allMode ||
+    f.watched ||
+    isPinned(f) ||
+    footballState.leagues.includes(f.competition.code)
   );
 
-  if (list.length === 0) {
-    fixturesListEl.innerHTML = '<div class="fb-empty">No fixtures yet. Add your free API key and hit Refresh!</div>';
+  // Filter fixtures specifically for the selected date
+  const dayFixtures = list
+    .filter(f => f.kickoffUtc && new Date(f.kickoffUtc).toDateString() === targetDateString)
+    .sort((a, b) => Date.parse(a.kickoffUtc || 0) - Date.parse(b.kickoffUtc || 0));
+
+  // Update date navigator bar
+  if (fbDateNav) {
+    fbDateNav.classList.toggle('is-today', selectedDateOffset === 0);
+  }
+  if (fbDateTitle) {
+    fbDateTitle.textContent = formatDateNavTitle(targetDate, selectedDateOffset);
+  }
+  if (fbDateBadge) {
+    fbDateBadge.textContent = `${dayFixtures.length} match${dayFixtures.length === 1 ? '' : 'es'}`;
+  }
+  if (fbTodayQuickBtn) {
+    fbTodayQuickBtn.style.display = selectedDateOffset !== 0 ? 'inline-block' : 'none';
+  }
+
+  if (dayFixtures.length === 0) {
+    fixturesListEl.innerHTML = `
+      <div class="fb-empty">
+        No matches scheduled for <strong>${escapeHtml(formatDateNavTitle(targetDate, selectedDateOffset))}</strong>.
+        ${selectedDateOffset !== 0 ? '<br><button type="button" class="btn btn-secondary btn-sm" style="margin-top: 10px;" id="jumpTodayEmptyBtn">↺ Jump to Today</button>' : ''}
+      </div>
+    `;
+    const jumpBtn = document.getElementById('jumpTodayEmptyBtn');
+    if (jumpBtn) {
+      jumpBtn.addEventListener('click', resetToToday);
+    }
     return;
   }
 
-  const byDay = new Map();
-  list
-    .sort((a, b) => Date.parse(a.kickoffUtc || 0) - Date.parse(b.kickoffUtc || 0))
-    .forEach(f => {
-      const d = new Date(f.kickoffUtc);
-      const key = d.toDateString();
-      if (!byDay.has(key)) byDay.set(key, []);
-      byDay.get(key).push(f);
-    });
+  let html = dayFixtures.map(f => {
+    const live = f.status === 'live';
+    const finished = f.status === 'finished';
+    const center = finished
+      ? `<span class="fixture-score">${f.score.home ?? '-'} : ${f.score.away ?? '-'}</span>`
+      : live
+        ? `<span class="fixture-score">${escapeHtml(f.minute || 'LIVE')}</span>`
+        : `<span class="fixture-kickoff">${new Date(f.kickoffUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`;
+    return `
+    <div class="fixture-row ${live ? 'is-live' : ''}" data-fixture-id="${escapeHtml(f.id)}">
+      <div class="fixture-teams">
+        <span class="fixture-team home">${escapeHtml(f.homeTeam.name)} ${crestHtml(f.homeTeam)}</span>
+        ${center}
+        <span class="fixture-team away">${crestHtml(f.awayTeam)} ${escapeHtml(f.awayTeam.name)}</span>
+      </div>
+      ${f.bigMatch ? SVG_ICONS.flame : ''}
+      ${(LEAGUE_LABELS[f.competition.code] || f.competition.code) ? `<span class="comp-chip">${escapeHtml(LEAGUE_LABELS[f.competition.code] || f.competition.code)}</span>` : ''}
+      <button type="button" class="star-btn ${isPinned(f) ? 'pinned' : ''}" data-pin-id="${escapeHtml(f.id)}" title="Pin fixture">
+        ${isPinned(f) ? SVG_ICONS.starFilled : SVG_ICONS.star}
+      </button>
+    </div>`;
+  }).join('');
 
-  let html = '';
-  for (const [dayKey, dayFixtures] of byDay) {
-    const date = new Date(dayKey);
-    const label = date.toDateString() === new Date().toDateString() ? 'Today' :
-      date.toDateString() === new Date(now + 86400000).toDateString() ? 'Tomorrow' :
-      date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-    html += `<div class="fb-date-header">${label}</div>`;
-    html += dayFixtures.map(f => {
-      const live = f.status === 'live';
-      const finished = f.status === 'finished';
-      const center = finished
-        ? `<span class="fixture-score">${f.score.home ?? '-'} : ${f.score.away ?? '-'}</span>`
-        : live
-          ? `<span class="fixture-score">${escapeHtml(f.minute || 'LIVE')}</span>`
-          : `<span class="fixture-kickoff">${new Date(f.kickoffUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`;
-      return `
-      <div class="fixture-row ${live ? 'is-live' : ''}" data-fixture-id="${escapeHtml(f.id)}">
-        <div class="fixture-teams">
-          <span class="fixture-team home">${escapeHtml(f.homeTeam.name)} ${crestHtml(f.homeTeam)}</span>
-          ${center}
-          <span class="fixture-team away">${crestHtml(f.awayTeam)} ${escapeHtml(f.awayTeam.name)}</span>
-        </div>
-        ${f.bigMatch ? SVG_ICONS.flame : ''}
-        ${(LEAGUE_LABELS[f.competition.code] || f.competition.code) ? `<span class="comp-chip">${escapeHtml(LEAGUE_LABELS[f.competition.code] || f.competition.code)}</span>` : ''}
-        <button type="button" class="star-btn ${isPinned(f) ? 'pinned' : ''}" data-pin-id="${escapeHtml(f.id)}" title="Pin fixture">
-          ${isPinned(f) ? SVG_ICONS.starFilled : SVG_ICONS.star}
-        </button>
-      </div>`;
-    }).join('');
-  }
   fixturesListEl.innerHTML = html;
   wireCrestFallbacks(fixturesListEl);
 
@@ -1433,26 +1501,6 @@ document.querySelectorAll('.fixture-pill').forEach(pill => {
   });
 });
 
-saveFootballKeyBtn.addEventListener('click', async () => {
-  const key = footballApiKeyInput.value.trim();
-  const showFbResult = (msg) => {
-    if (footballKeyResult) {
-      footballKeyResult.textContent = msg;
-      footballKeyResult.style.display = 'block';
-    }
-  };
-  try {
-    await window.api.saveSettings({ footballApiKey: key });
-    footballState.apiKey = key;
-    teamSearchHelpEl.textContent = key
-      ? 'API key active — full schedule unlocked.'
-      : 'No API key: searching bundled top clubs.';
-    showFbResult('✅ Football API key saved! Hit 🔄 Refresh in the Matches tab.');
-  } catch (error) {
-    showFbResult(`❌ Failed to save key: ${error.message}`);
-  }
-});
-
 reminderMinutesInput.addEventListener('change', async () => {
   const minutes = Math.min(120, Math.max(5, parseInt(reminderMinutesInput.value) || 15));
   reminderMinutesInput.value = minutes;
@@ -1473,14 +1521,56 @@ liveBoostCheckbox.addEventListener('change', async () => {
 
 if (typeof window.api.onFootballStatusUpdated === 'function') {
   window.api.onFootballStatusUpdated(() => {
-    // Light refresh when the monitor pushes new state while tab is open
-    if (document.getElementById('tab-football').classList.contains('active')) {
-      window.api.getFootballSchedule().then(sched => {
-        fixturesCache = (sched && sched.fixtures) || [];
-        renderFixtures();
-      }).catch(err => console.error('Football schedule refresh failed:', err));
+    // Always keep the cache warm; rendering a hidden list is harmless.
+    window.api.getFootballSchedule().then(sched => {
+      fixturesCache = (sched && sched.fixtures) || [];
+      renderFixtures();
+    }).catch(err => console.error('Football schedule refresh failed:', err));
+  });
+}
+
+if (fbPrevDayBtn) {
+  fbPrevDayBtn.addEventListener('click', () => changeDateOffset(-1));
+}
+
+if (fbNextDayBtn) {
+  fbNextDayBtn.addEventListener('click', () => changeDateOffset(1));
+}
+
+if (fbDateCenter) {
+  fbDateCenter.addEventListener('click', () => resetToToday());
+  fbDateCenter.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      resetToToday();
     }
   });
 }
+
+if (fbTodayQuickBtn) {
+  fbTodayQuickBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    resetToToday();
+  });
+}
+
+// Keyboard shortcuts (Left/Right arrow) when on the Matches subtab
+document.addEventListener('keydown', (e) => {
+  const activeTabBtn = document.querySelector('.tab-btn.active');
+  const activeTab = activeTabBtn ? activeTabBtn.dataset.tab : null;
+  const activeSubtabBtn = document.querySelector('#tab-football .sub-tab-btn.active');
+  const activeSubtab = activeSubtabBtn ? activeSubtabBtn.dataset.subtab : null;
+
+  if (activeTab !== 'football' || activeSubtab !== 'fb-matches') return;
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    changeDateOffset(-1);
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    changeDateOffset(1);
+  }
+});
 
 loadSettings();

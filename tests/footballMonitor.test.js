@@ -238,6 +238,107 @@ describe('Football Monitor Tests', () => {
     assert.equal(called, 0);
   });
 
+  it('watcher polls watched cup competition scoreboards too (live cup matches update)', async () => {
+    const store = memoryStore({
+      footballFixtures: [makeFixture('cupfx', {
+        competition: { code: 'GER-SC', name: 'German Supercup' },
+        status: 'scheduled',
+        kickoffUtc: new Date(Date.now() + 10 * 60000).toISOString(),
+        homeTeam: { id: '', name: 'Bayern Munich', crest: '' },
+        awayTeam: { id: '', name: 'Borussia Dortmund', crest: '' }
+      })]
+    });
+    const requestedCodes = [];
+    const espn = {
+      fetchLiveState: async (codes) => {
+        requestedCodes.push(...codes);
+        return [{ eventId: 'x', kickoffUtc: new Date(Date.now() + 11 * 60000).toISOString(), competitionCode: 'GER-SC', homeName: 'Bayern Munich', awayName: 'Borussia Dortmund', state: 'in', completed: false, minute: "5'", scoreHome: 0, scoreAway: 0 }];
+      }
+    };
+    const mon = createFootballMonitor({
+      store,
+      favoriteTeams: [{ id: '', name: 'Bayern Munich', crest: '', competitionCode: 'BL1' }],
+      pinnedFixtures: [], leagues: ['PL'], reminderMinutes: 15, liveBoost: true,
+      espnProvider: espn, fdProvider: null,
+      nowFn: () => Date.now(), paceMs: 0,
+      onFixtureEvent: (e) => events.push(e.type),
+      onError: () => {}
+    });
+    const events = [];
+    await mon.checkWatch();
+    assert.ok(requestedCodes.includes('GER-SC'), `watcher must request watched cup codes, got ${JSON.stringify(requestedCodes)}`);
+    assert.deepEqual(events, ['kickoff']);
+  });
+
+  it('forces a stuck live fixture to finished when its source goes silent past kickoff+3h', async () => {
+    const store = memoryStore({
+      footballFixtures: [makeFixture('stuck1', {
+        status: 'live',
+        minute: "45+3'",
+        homeTeam: { id: '', name: 'Bayern Munich', crest: '' },
+        awayTeam: { id: '', name: 'Borussia Dortmund', crest: '' },
+        competition: { code: 'GER-SC', name: 'German Supercup' }
+      })]
+    });
+    const events = [];
+    const mon = createFootballMonitor({
+      store,
+      favoriteTeams: [{ id: '', name: 'Bayern Munich', crest: '', competitionCode: 'BL1' }],
+      pinnedFixtures: [], leagues: ['PL'], reminderMinutes: 15, liveBoost: true,
+      espnProvider: { fetchLiveState: async () => [] }, // silent source
+      fdProvider: null,
+      nowFn: () => KICKOFF + 4 * 60 * 60 * 1000, // 4h after kickoff
+      paceMs: 0,
+      onFixtureEvent: (e) => events.push(e.type),
+      onError: () => {}
+    });
+    await mon.checkWatch();
+    assert.deepEqual(events, ['fulltime']);
+    assert.equal(store.get('footballFixtures', [])[0].status, 'finished');
+  });
+
+  it('sweep REPLACES stale pseudo duplicates with the canonical cup fixture', async () => {
+    const staleKickoff = new Date(KICKOFF).toISOString();
+    const store = memoryStore({
+      footballFixtures: [{
+        id: 'espn:bayern-munich-vs-borussia-dortmund@na',
+        kickoffUtc: staleKickoff,
+        status: 'live',
+        minute: "45+3'",
+        homeTeam: { id: '', name: 'Bayern Munich', crest: '' },
+        awayTeam: { id: '', name: 'Borussia Dortmund', crest: '' },
+        competition: { code: '', name: '' },
+        score: { home: 0, away: 0 },
+        pseudo: true
+      }]
+    });
+    const espn = {
+      fetchLiveState: async () => [],
+      fetchFixtures: async (code) => code === 'GER-SC' ? [{
+        id: 'espn:401873679',
+        kickoffUtc: staleKickoff,
+        status: 'live',
+        minute: "76'",
+        homeTeam: { id: '', name: 'Bayern Munich', crest: '' },
+        awayTeam: { id: '', name: 'Borussia Dortmund', crest: '' },
+        competition: { code: 'GER-SC', name: 'German Supercup' },
+        score: { home: 0, away: 1 }
+      }] : []
+    };
+    const mon = createFootballMonitor({
+      store,
+      favoriteTeams: [], pinnedFixtures: [], leagues: ['PL'], reminderMinutes: 15, liveBoost: true,
+      espnProvider: espn, fdProvider: null,
+      nowFn: () => Date.now(), paceMs: 0,
+      onFixtureEvent: () => {}, onError: () => {}
+    });
+    await mon.checkSweep();
+    const cache = store.get('footballFixtures', []);
+    assert.equal(cache.length, 1);
+    assert.equal(cache[0].id, 'espn:401873679');
+    assert.equal(cache[0].minute, "76'");
+  });
+
   it('sweep merges per-team ESPN schedules for resolved favorites and skips cross-source duplicates', async () => {
     const store = memoryStore({
       footballFixtures: [makeFixture('fd-dup', {})]

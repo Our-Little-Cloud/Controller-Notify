@@ -8,9 +8,16 @@
 
 const {
   isWatchedFixture,
-  normalizeClubName
+  namesMatch,
+  foldName
 } = require('./footballManager');
 const { EXTRA_LEAGUES } = require('./football');
+
+function eventKey(homeName, awayName, kickoffUtc) {
+  const day = kickoffUtc ? new Date(kickoffUtc).toISOString().slice(0, 10) : 'na';
+  const slug = (n) => foldName(n || '').replace(/\s+/g, '-') || 'unknown';
+  return `${slug(homeName)}-vs-${slug(awayName)}@${day}`;
+}
 
 const FIXTURES_KEY = 'footballFixtures';
 const EVENT_LOG_KEY = 'matchEventLog';
@@ -39,7 +46,7 @@ function createFootballMonitor({
   onError = () => {},
   watchIntervalMs = 75 * 1000,
   sweepIntervalMs = 6 * 60 * 60 * 1000,
-  paceMs = 7000
+  paceMs = 250
 } = {}) {
   if (!store) throw new Error('store instance is required for FootballMonitor');
 
@@ -104,13 +111,22 @@ function createFootballMonitor({
       const prev = lastStatuses[target.id] || target.cachedStatus || null;
       const cur = statuses.get(target.id) || target.status;
 
+      // Dead-man switch: a fixture still marked live long past kickoff with
+      // no source reporting is over — force finished so it can't stick at
+      // "45'+3" forever (user-visible stale-live bug).
+      const effectiveCur =
+        cur === 'live' && !statuses.has(target.id) &&
+        target.kickoffMs != null && now > target.kickoffMs + 3 * 60 * 60 * 1000
+          ? 'finished'
+          : cur;
+
       const fired = firedLog[target.id] || {};
 
       // Reminder inside [kickoff - reminderMinutes, kickoff)
       const kickoffMs = target.kickoffMs;
       if (
         !fired.reminder &&
-        cur === 'scheduled' &&
+        effectiveCur === 'scheduled' &&
         kickoffMs != null &&
         now >= kickoffMs - reminderMinutes * 60 * 1000 &&
         now < kickoffMs
@@ -118,16 +134,16 @@ function createFootballMonitor({
         emit('reminder', target);
       }
 
-      if (!fired.kickoff && prev === 'scheduled' && cur === 'live') {
+      if (!fired.kickoff && prev === 'scheduled' && effectiveCur === 'live') {
         emit('kickoff', target);
       }
 
-      if (!fired.fulltime && cur === 'finished' && prev !== 'finished') {
+      if (!fired.fulltime && effectiveCur === 'finished' && prev !== 'finished') {
         emit('fulltime', target, { home: target.scoreHome, away: target.scoreAway });
       }
 
-      lastStatuses[target.id] = cur;
-      persistStatus(target, cur);
+      lastStatuses[target.id] = effectiveCur;
+      persistStatus(target, effectiveCur);
     }
   }
 
@@ -161,14 +177,19 @@ function createFootballMonitor({
 
     const cached = store.get(FIXTURES_KEY, []);
     const watchedCached = cached.filter(f =>
-      (isWatchedFixture(f, favoriteTeams, pinnedFixtures) ||
-        pinnedFixtures.some(p => p.id === f.id)) &&
-      (() => {
-        // Watcher only polls inside active match windows (plan §2.3)
-        if (!f.kickoffUtc) return true;
-        const k = Date.parse(f.kickoffUtc);
-        return now >= k - windowStartMs && now <= k + windowEndMs;
-      })()
+      (
+        (isWatchedFixture(f, favoriteTeams, pinnedFixtures) ||
+          pinnedFixtures.some(p => p.id === f.id)) &&
+        (() => {
+          // Watcher only polls inside active match windows (plan §2.3)…
+          if (!f.kickoffUtc) return true;
+          const k = Date.parse(f.kickoffUtc);
+          return now >= k - windowStartMs && now <= k + windowEndMs;
+        })()
+      ) ||
+      // …but a fixture the cache believes is LIVE stays watched past the
+      // window so the dead-man switch can retire it.
+      f.status === 'live'
     );
 
     const targets = new Map();
@@ -189,15 +210,20 @@ function createFootballMonitor({
     let statuses = new Map();
 
     if (espnProvider && liveBoost) {
+      // Poll enabled leagues PLUS any cup/extra competition that has a watched
+      // fixture near its window — otherwise live cup matches never update.
+      const fdCodeSet = new Set(leagues);
+      const watchedExtraCodes = [...new Set(
+        [...targets.values()]
+          .map(t => t.competitionCode)
+          .filter(c => c && !fdCodeSet.has(c))
+      )];
       try {
-        const states = await espnProvider.fetchLiveState(leagues);
+        const states = await espnProvider.fetchLiveState([...fdCodeSet, ...watchedExtraCodes]);
         for (const s of states) {
-          const homeKey = normalizeClubName(s.homeName);
-          const awayKey = normalizeClubName(s.awayName);
-
-          // Match against cached watched fixtures by club name...
+          // Match against cached watched fixtures by club identity...
           const match = [...targets.values()].find(t =>
-            normalizeClubName(t.homeName) === homeKey && normalizeClubName(t.awayName) === awayKey
+            namesMatch(t.homeName, s.homeName) && namesMatch(t.awayName, s.awayName)
           );
 
           if (match) {
@@ -208,11 +234,11 @@ function createFootballMonitor({
             statuses.set(match.id, match.status);
           } else if (
             favoriteTeams.some(t =>
-              normalizeClubName(t.name) === homeKey || normalizeClubName(t.name) === awayKey
+              namesMatch(t.name, s.homeName) || namesMatch(t.name, s.awayName)
             )
           ) {
             // ...or surface favorite matches not yet in cache (keyless-friendly)
-            const pseudoId = `espn:${homeKey}-${awayKey}`;
+            const pseudoId = `espn:${eventKey(s.homeName, s.awayName, s.kickoffUtc)}`;
             const target = {
               id: pseudoId,
               homeName: s.homeName,
@@ -291,8 +317,7 @@ function createFootballMonitor({
         const fixtures = await fdProvider.fetchSchedule(code, from, to);
         for (const f of fixtures) {
           const match = [...targets.values()].find(t =>
-            normalizeClubName(t.homeName) === normalizeClubName(f.homeTeam.name) &&
-            normalizeClubName(t.awayName) === normalizeClubName(f.awayTeam.name)
+            namesMatch(t.homeName, f.homeTeam.name) && namesMatch(t.awayName, f.awayTeam.name)
           ) || (targets.has(f.id) ? targets.get(f.id) : null);
           if (match) {
             match.status = f.status;
@@ -316,14 +341,52 @@ function createFootballMonitor({
   function sameFixture(a, b) {
     if (!a || !b) return false;
     const sameSides =
-      normalizeClubName(a.homeTeam && a.homeTeam.name) === normalizeClubName(b.homeTeam && b.homeTeam.name) &&
-      normalizeClubName(a.awayTeam && a.awayTeam.name) === normalizeClubName(b.awayTeam && b.awayTeam.name);
+      namesMatch(a.homeTeam && a.homeTeam.name, b.homeTeam && b.homeTeam.name) &&
+      namesMatch(a.awayTeam && a.awayTeam.name, b.awayTeam && b.awayTeam.name);
     const sameDay = a.kickoffUtc && b.kickoffUtc &&
       new Date(a.kickoffUtc).toDateString() === new Date(b.kickoffUtc).toDateString();
     return sameSides && (sameDay || !a.kickoffUtc || !b.kickoffUtc);
   }
 
-  /** Sweeper tick: refresh schedules — fd.org leagues, ESPN big-5 cups,
+  /**
+   * Merge a swept fixture into the map. If an existing entry refers to the
+   * same real-world match (different id), prefer the MORE INFORMATIVE one:
+   * a canonical fixture (real competition code, non-pseudo) replaces a
+   * pseudo/stale entry; otherwise the existing entry wins.
+   */
+  function mergeFixture(map, f) {
+    let dupId = null;
+    for (const [id, existing] of map) {
+      const eh = existing.homeTeam && existing.homeTeam.name;
+      const ea = existing.awayTeam && existing.awayTeam.name;
+      const fh = f.homeTeam && f.homeTeam.name;
+      const fa = f.awayTeam && f.awayTeam.name;
+      const sameRealMatch =
+        id === f.id ||
+        sameFixture(existing, f) ||
+        // Pseudo entries may lack a trustworthy kickoff/orientation — club
+        // identity alone (either side order) retires them once a canonical
+        // fixture arrives.
+        (existing.pseudo &&
+          ((namesMatch(eh, fh) && namesMatch(ea, fa)) ||
+           (namesMatch(eh, fa) && namesMatch(ea, fh))));
+      if (sameRealMatch) { dupId = id; break; }
+    }
+    if (dupId == null) {
+      map.set(f.id, f);
+      return;
+    }
+    if (dupId === f.id) return;
+    const dup = map.get(dupId);
+    // Prefer the more informative entry: a fixture carrying a real
+    // competition code replaces one without it; otherwise keep existing.
+    if (!dup.competition || !dup.competition.code ? Boolean(f.competition && f.competition.code) : false) {
+      map.delete(dupId);
+      map.set(f.id, f);
+    }
+  }
+
+  /** Sweeper tick: refresh schedules — ESPN leagues, ESPN big-5 cups,
    *  and per-team ESPN schedules for resolved favorites. */
   async function checkSweep() {
     lastSweep = Date.now();
@@ -332,33 +395,52 @@ function createFootballMonitor({
     const to = new Date(nowFn() + 7 * dayMs).toISOString().slice(0, 10);
     const merged = new Map(store.get(FIXTURES_KEY, []).map(f => [f.id, f]));
 
-    // Phase 1: ESPN-only cup competitions (big-5), keyless
-    if (espnProvider && liveBoost && cupsEnabled) {
-      for (let i = 0; i < EXTRA_LEAGUES.length; i++) {
-        try {
-          const cupFixtures = await espnProvider.fetchFixtures(EXTRA_LEAGUES[i].code, from, to);
-          for (const f of cupFixtures) {
-            const dup = [...merged.values()].find(existing => existing.id === f.id || sameFixture(existing, f));
-            if (!dup) merged.set(f.id, f);
+    if (espnProvider) {
+      // 1. Regular leagues (PL, PD, BL1, SA, FL1, CL, etc.)
+      if (typeof espnProvider.fetchSchedule === 'function') {
+        for (let i = 0; i < leagues.length; i++) {
+          const code = leagues[i];
+          try {
+            const fixtures = await espnProvider.fetchSchedule(code, from, to);
+            for (const f of fixtures) {
+              mergeFixture(merged, f);
+            }
+          } catch (err) {
+            err.message = `ESPN ${code} sweep failed: ${err.message}`;
+            onError(err, code);
           }
-        } catch (err) {
-          err.message = `ESPN ${EXTRA_LEAGUES[i].code} sweep failed: ${err.message}`;
-          onError(err, EXTRA_LEAGUES[i].code);
-        }
-        if (paceMs > 0 && i < EXTRA_LEAGUES.length - 1) {
-          await new Promise(res => setTimeout(res, paceMs));
+          if (paceMs > 0 && i < leagues.length - 1) {
+            await new Promise(res => setTimeout(res, paceMs));
+          }
         }
       }
 
-      // Phase 2: per-team schedules for favorites resolved with an ESPN identity
+      // 2. ESPN-only cup competitions (big-5) if enabled
+      if (cupsEnabled) {
+        for (let i = 0; i < EXTRA_LEAGUES.length; i++) {
+          try {
+            const cupFixtures = await espnProvider.fetchFixtures(EXTRA_LEAGUES[i].code, from, to);
+            for (const f of cupFixtures) {
+              mergeFixture(merged, f);
+            }
+          } catch (err) {
+            err.message = `ESPN ${EXTRA_LEAGUES[i].code} sweep failed: ${err.message}`;
+            onError(err, EXTRA_LEAGUES[i].code);
+          }
+          if (paceMs > 0 && i < EXTRA_LEAGUES.length - 1) {
+            await new Promise(res => setTimeout(res, paceMs));
+          }
+        }
+      }
+
+      // 3. Per-team schedules for favorites resolved with an ESPN identity
       const espnFavorites = favoriteTeams.filter(t => t.espnSlug && t.espnTeamId);
       for (let i = 0; i < espnFavorites.length; i++) {
         const fav = espnFavorites[i];
         try {
           const teamFixtures = await espnProvider.fetchTeamSchedule(fav.espnSlug, fav.espnTeamId);
           for (const f of teamFixtures) {
-            const dup = [...merged.values()].find(existing => existing.id === f.id || sameFixture(existing, f));
-            if (!dup) merged.set(f.id, { ...f, viaFavorite: fav.name });
+            mergeFixture(merged, { ...f, viaFavorite: fav.name });
           }
         } catch (err) {
           err.message = `ESPN team schedule for ${fav.name} (${fav.espnSlug}/${fav.espnTeamId}) failed: ${err.message}`;
@@ -426,6 +508,10 @@ function createFootballMonitor({
 
   function start() {
     stop();
+    const cached = store.get(FIXTURES_KEY, []);
+    if (!cached || cached.length === 0 || !lastSweep) {
+      Promise.resolve(checkSweep()).catch(err => onError(err));
+    }
     watchTimer = setInterval(() => {
       Promise.resolve(checkWatch()).catch(err => onError(err));
     }, watchIntervalMs);

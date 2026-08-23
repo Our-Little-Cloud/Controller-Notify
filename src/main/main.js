@@ -11,7 +11,7 @@ const {
   migrateChannelsStore
 } = require('./channelManager');
 const { createLiveMonitor, HISTORY_KEY, MAX_HISTORY } = require('./liveMonitor');
-const { LEAGUES, createFdProvider, createEspnProvider } = require('./football');
+const { LEAGUES, createEspnProvider } = require('./football');
 const {
   loadBigClubs,
   searchBigClubs,
@@ -20,6 +20,7 @@ const {
   togglePinnedFixture,
   normalizeFixture,
   isBigMatch,
+  isWatchedFixture,
   normalizeClubName
 } = require('./footballManager');
 const { createFootballMonitor, FIXTURES_KEY } = require('./footballMonitor');
@@ -31,6 +32,8 @@ app.commandLine.appendSwitch('disable-software-rasterizer');
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=64');
 
 const store = new Store({
+  clearInvalidConfig: true,
+  deserialize: (text) => JSON.parse(typeof text === 'string' ? text.replace(/^\uFEFF/, '') : text),
   defaults: {
     apiKey: process.env.YOUTUBE_API_KEY || '',
     channels: [],
@@ -47,6 +50,7 @@ const store = new Store({
     footballFavoriteTeams: [],
     footballPinnedFixtures: [],
     footballLeagues: ['PL', 'PD', 'BL1', 'CL'],
+    footballAllLeagues: true,
     footballCupsEnabled: true,
     footballLiveBoost: true,
     matchReminderMinutes: 15,
@@ -59,6 +63,11 @@ const store = new Store({
 const initialChannels = migrateChannelsStore(store.store);
 if (initialChannels.length > 0 && (!store.get('channels') || store.get('channels').length === 0)) {
   store.set('channels', initialChannels);
+} else {
+  const existingChannels = store.get('channels', []);
+  if (Array.isArray(existingChannels) && existingChannels.length > 0) {
+    store.set('channels', existingChannels.map(normalizeChannel));
+  }
 }
 
 let tray = null;
@@ -83,8 +92,9 @@ function buildFootballMonitor() {
   const logFootballError = (err) => {
     console.error('[FootballMonitor]', err && err.stack ? err.stack : err);
   };
-  const apiKey = store.get('footballApiKey', '');
-  const fdProvider = apiKey ? createFdProvider({ apiKey, fetchFn: (url, opts) => fetch(url, opts) }) : null;
+  // football-data.org deprecated: ESPN is now the sole data source
+  // (schedules via scoreboards/extras + per-team schedules for resolved favorites).
+  const fdProvider = null;
   const espnProvider = createEspnProvider({
     fetchFn: (url) => fetch(url),
     onError: logFootballError
@@ -94,10 +104,12 @@ function buildFootballMonitor() {
     store,
     favoriteTeams: store.get('footballFavoriteTeams', []),
     pinnedFixtures: store.get('footballPinnedFixtures', []),
-    leagues: store.get('footballLeagues', ['PL', 'PD', 'BL1', 'CL']),
+    leagues: store.get('footballAllLeagues', true)
+      ? LEAGUES.map(l => l.code)
+      : store.get('footballLeagues', ['PL', 'PD', 'BL1', 'CL']),
+    cupsEnabled: store.get('footballCupsEnabled', true),
     reminderMinutes: store.get('matchReminderMinutes', 15),
     liveBoost: store.get('footballLiveBoost', true),
-    cupsEnabled: store.get('footballCupsEnabled', true),
     espnProvider,
     fdProvider,
     onFixtureEvent: (event) => {
@@ -302,7 +314,6 @@ ipcMain.handle('save-settings', async (_, settings) => {
   const oldApiKey = store.get('apiKey');
   const oldChannelId = store.get('channelId');
   const oldChannelUrl = store.get('channelUrl');
-  const oldFootballApiKey = store.get('footballApiKey');
   
   if (settings.channelUrl && (settings.channelUrl !== oldChannelUrl || !settings.channelId)) {
     try {
@@ -331,12 +342,6 @@ ipcMain.handle('save-settings', async (_, settings) => {
   
   if (apiKeyChanged || channelChanged) {
     liveMonitor.checkNow(false);
-  }
-
-  if (settings.footballApiKey !== undefined && settings.footballApiKey !== oldFootballApiKey) {
-    startFootballIfEnabled();
-    if (footballMonitor) Promise.resolve(footballMonitor.checkSweep()).catch(err =>
-      console.error('[Football] sweep after key change failed:', err.stack || err));
   }
 
   return { success: true, channelId: settings.channelId };
@@ -602,42 +607,29 @@ ipcMain.handle('get-football-state', guardFootball(() => ({
   favoriteTeams: store.get('footballFavoriteTeams', []),
   pinnedFixtures: store.get('footballPinnedFixtures', []),
   leagues: store.get('footballLeagues', []),
+  allLeagues: store.get('footballAllLeagues', true),
   cupsEnabled: store.get('footballCupsEnabled', true),
   liveBoost: store.get('footballLiveBoost', true),
   reminderMinutes: store.get('matchReminderMinutes', 15),
   status: footballMonitor ? footballMonitor.getStatus() : null
 })));
 
-ipcMain.handle('get-football-schedule', guardFootball(() => ({
-  success: true,
-  fixtures: store.get(FIXTURES_KEY, []).map(f => ({
-    ...f,
-    bigMatch: isBigMatch(f)
-  }))
-})));
+ipcMain.handle('get-football-schedule', guardFootball(() => {
+  const favorites = store.get('footballFavoriteTeams', []);
+  const pins = store.get('footballPinnedFixtures', []);
+  return {
+    success: true,
+    fixtures: store.get(FIXTURES_KEY, []).map(f => ({
+      ...f,
+      bigMatch: isBigMatch(f),
+      watched: isWatchedFixture(f, favorites, pins)
+    }))
+  };
+}));
 
 ipcMain.handle('search-football-teams', guardFootball(async (_, { query = '', competitionCode = '' } = {}) => {
-  const apiKey = store.get('footballApiKey', '');
-  const q = String(query || '').trim().toLowerCase();
-
-  // Keyed: league-first live search over the API team list
-  if (apiKey && competitionCode) {
-    try {
-      const url = `https://api.football-data.org/v4/competitions/${encodeURIComponent(competitionCode)}/teams`;
-      const res = await fetch(url, { headers: { 'X-Auth-Token': apiKey } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const teams = (data.teams || [])
-        .map(t => ({ id: String(t.id), name: t.name, crest: t.crest || '', competitionCode }))
-        .filter(t => !q || t.name.toLowerCase().includes(q))
-        .slice(0, 30);
-      return { success: true, source: 'api', teams };
-    } catch (err) {
-      console.error('[Football] API team search failed, falling back to bundled list:', err.stack || err);
-    }
-  }
-
-  // Keyless fallback: bundled big-clubs list
+  // football-data.org deprecated — team search runs over the bundled
+  // big-clubs list; ESPN per-team schedules cover fixtures after favoriting.
   return {
     success: true,
     source: 'bundled',
@@ -709,19 +701,24 @@ ipcMain.handle('toggle-pin-fixture', guardFootball((_, fixture) => {
 }));
 
 ipcMain.handle('set-football-leagues', guardFootball((_, payload) => {
-  // Accepts { leagues, cupsEnabled } or a legacy bare array of league codes
+  // Accepts { all, leagues, cupsEnabled } or a legacy bare array of league codes
   const isArray = Array.isArray(payload);
+  const all = isArray ? undefined : payload.all;
   const leagues = isArray ? payload : (payload.leagues || []);
   const cupsEnabled = isArray ? undefined : payload.cupsEnabled;
   if (!Array.isArray(leagues)) throw new Error('leagues must be an array');
   const valid = leagues.filter(c => LEAGUES.some(l => l.code === c));
   store.set('footballLeagues', valid);
+  if (all !== undefined) {
+    store.set('footballAllLeagues', all === true);
+  }
   if (cupsEnabled !== undefined) {
     store.set('footballCupsEnabled', cupsEnabled === true);
   }
   startFootballIfEnabled();
   return {
     success: true,
+    allLeagues: store.get('footballAllLeagues', true),
     leagues: valid,
     cupsEnabled: store.get('footballCupsEnabled', true)
   };
