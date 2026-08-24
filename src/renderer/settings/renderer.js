@@ -1573,4 +1573,13 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+if (window.api && typeof window.api.onSelectTab === 'function') {
+  window.api.onSelectTab((tabName) => {
+    const targetBtn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+    if (targetBtn) {
+      targetBtn.click();
+    }
+  });
+}
+
 loadSettings();

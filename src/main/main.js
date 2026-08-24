@@ -561,12 +561,35 @@ ipcMain.on('minimize-settings', () => {
   if (win) win.minimize();
 });
 
-ipcMain.on('click-stream', (_, targetVideoId) => {
+ipcMain.on('click-stream', (_, targetVideoId, popupType) => {
+  let videoId = targetVideoId;
+  let type = popupType;
+
+  if (typeof targetVideoId === 'object' && targetVideoId !== null) {
+    videoId = targetVideoId.videoId;
+    type = targetVideoId.type || type;
+  }
+
+  if (type === 'football' || videoId === 'football') {
+    const settingsWin = windowManager.createSettingsWindow();
+    if (settingsWin && settingsWin.webContents) {
+      if (settingsWin.webContents.isLoading()) {
+        settingsWin.webContents.once('did-finish-load', () => {
+          windowManager.broadcastToSettings('select-tab', 'football');
+        });
+      } else {
+        windowManager.broadcastToSettings('select-tab', 'football');
+      }
+    }
+    windowManager.animatePopupOut();
+    return;
+  }
+
   const status = liveMonitor.getStatus();
-  const videoId = targetVideoId || status.streamData?.videoId;
+  const id = videoId || status.streamData?.videoId;
   
-  if (videoId && videoId !== 'live') {
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
+  if (id && id !== 'live') {
+    const url = `https://www.youtube.com/watch?v=${id}`;
     if (store.get('openInBrowser', true)) {
       shell.openExternal(url);
     } else {

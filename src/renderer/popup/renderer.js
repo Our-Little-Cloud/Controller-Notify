@@ -9,6 +9,7 @@ const popupCloseBtn = document.getElementById('popupCloseBtn');
 
 let autoHideTimer = null;
 let currentVideoId = null;
+let currentNotificationType = null;
 
 const savedTheme = localStorage.getItem('appTheme') || 'pink';
 document.documentElement.setAttribute('data-theme', savedTheme);
@@ -16,6 +17,7 @@ document.documentElement.setAttribute('data-theme', savedTheme);
 window.popupApi.onStreamData((data) => {
   const activeTheme = data.theme || localStorage.getItem('appTheme') || 'pink';
   document.documentElement.setAttribute('data-theme', activeTheme);
+  currentNotificationType = data ? data.type : null;
 
   if (data.type === 'football') {
     renderFootballPopup(data);
@@ -85,7 +87,7 @@ popup.addEventListener('click', (e) => {
   if (e.target.closest('#popupCloseBtn') || e.target.closest('.popup-close-btn')) {
     return;
   }
-  window.popupApi.sendClickStream(currentVideoId);
+  window.popupApi.sendClickStream(currentVideoId, currentNotificationType);
 });
 
 document.addEventListener('keydown', (e) => {
