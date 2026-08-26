@@ -226,12 +226,33 @@
           </div>
           <div class="filter-toolbar" style="flex-direction: column; align-items: stretch; gap: 8px;">
             <div class="league-chips" id="leagueChips"></div>
+            <div class="chips-divider"></div>
             <div class="filter-pills" id="fixtureFilterPills">
               <button type="button" class="fixture-pill active" data-fixture-filter="all">All</button>
               <button type="button" class="fixture-pill" data-fixture-filter="favorites">Favorites</button>
               <button type="button" class="fixture-pill" data-fixture-filter="live">Live</button>
               <button type="button" class="fixture-pill" data-fixture-filter="finished">Finished</button>
             </div>
+          </div>
+          <div class="fb-date-nav" id="fbDateNav">
+            <button type="button" class="fb-nav-btn" id="fbPrevDayBtn" title="Previous Day (←)" aria-label="Previous Day">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            
+            <div class="fb-date-center" id="fbDateCenter" role="button" tabindex="0" title="Click to jump to Today">
+              <div class="fb-date-primary">
+                <span class="fb-date-icon">📅</span>
+                <span class="fb-date-title" id="fbDateTitle">Today · Sun, Aug 23</span>
+                <span class="fb-date-badge" id="fbDateBadge">0 matches</span>
+              </div>
+              <button type="button" class="fb-today-quick-btn" id="fbTodayQuickBtn" style="display: none;" title="Jump back to Today">
+                ↺ Today
+              </button>
+            </div>
+
+            <button type="button" class="fb-nav-btn" id="fbNextDayBtn" title="Next Day (→)" aria-label="Next Day">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
           </div>
           <div id="footballBanner" class="fb-banner" style="display: none;"></div>
           <div id="fixturesList" class="fixtures-list">
@@ -262,14 +283,8 @@
         </div>
 
         <div class="section" style="margin-top: 16px;">
-          <h2 class="section-title">🔑 football-data.org API Key</h2>
-          <div class="form-group">
-            <label for="footballApiKeyInput">API Key (Optional)</label>
-            <input type="password" id="footballApiKeyInput" placeholder="Free key from football-data.org" autocomplete="off">
-            <span class="help-text">Favorites work without a key. A free key unlocks the full fixture schedule. Get one at <strong>football-data.org/client/register</strong>.</span>
-          </div>
-          <button type="button" class="btn btn-primary" id="saveFootballKeyBtn">Save Key</button>
-          <div id="footballKeyResult" class="test-result" style="display: none;"></div>
+          <h2 class="section-title">📡 Data Source</h2>
+          <span class="help-text">Football fixtures and live scores come from ESPN automatically — no API key needed. Team search uses the built-in top-clubs list.</span>
         </div>
 
         <div class="section" style="margin-top: 16px;">

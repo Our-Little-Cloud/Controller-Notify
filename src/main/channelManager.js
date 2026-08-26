@@ -3,6 +3,8 @@
  * Handles channel store management, normalization, and Google Takeout CSV import.
  */
 
+const { sanitizeString } = require('./youtube');
+
 /**
  * Normalizes a channel object to standard schema.
  */
@@ -25,6 +27,7 @@ function normalizeChannel(rawChannel) {
   if (!title) {
     title = handle ? handle.replace(/^@/, '') : id || 'Streamer';
   }
+  title = sanitizeString(title);
 
   // If url is missing or not an http URL, construct it
   if (!url || !url.startsWith('http')) {
@@ -39,6 +42,15 @@ function normalizeChannel(rawChannel) {
     }
   }
 
+  let currentStream = rawChannel.currentStream || null;
+  if (currentStream && typeof currentStream === 'object') {
+    currentStream = {
+      ...currentStream,
+      title: sanitizeString(currentStream.title),
+      channelTitle: sanitizeString(currentStream.channelTitle || title)
+    };
+  }
+
   return {
     id: id || handle || url,
     handle: handle || '',
@@ -47,7 +59,7 @@ function normalizeChannel(rawChannel) {
     avatar: rawChannel.avatar || '',
     enabled: rawChannel.enabled !== false,
     isLive: Boolean(rawChannel.isLive),
-    currentStream: rawChannel.currentStream || null,
+    currentStream,
     lastLiveVideoId: rawChannel.lastLiveVideoId || null
   };
 }

@@ -37,4 +37,5 @@ contextBridge.exposeInMainWorld('api', {
    checkFootballNow: () => ipcRenderer.invoke('check-football-now'),
    testFootballNotification: () => ipcRenderer.invoke('test-football-notification'),
    onFootballStatusUpdated: (callback) => ipcRenderer.on('football-status-updated', (_event, data) => callback(data)),
+   onSelectTab: (callback) => ipcRenderer.on('select-tab', (_event, tabName) => callback(tabName)),
  });

@@ -10,6 +10,7 @@ const {
   filterScheduleFixtures,
   isBigMatch,
   monogram,
+  namesMatch,
   loadBigClubs,
   searchBigClubs
 } = require('../src/main/footballManager');
@@ -173,6 +174,55 @@ describe('Football Manager Tests', () => {
       assert.equal(isWatchedFixture(fixture, keylessFavorites, []), true);
       const otherTeamFav = [{ id: '', name: 'chelsea', crest: '', competitionCode: 'PL' }];
       assert.equal(isWatchedFixture(fixture, otherTeamFav, []), false);
+    });
+  });
+
+  describe('Cross-provider club name matching', () => {
+    it('matches the same club spelled differently across providers', () => {
+      const positives = [
+        ['FC Bayern München', 'Bayern Munich'],
+        ['Bayern München', 'Bayern Munich'],
+        ['Real Madrid CF', 'Real Madrid'],
+        ['RCD Espanyol de Barcelona', 'Espanyol'],
+        ['Espanyol de Barcelona', 'RCD Espanyol'],
+        ['Athletic Club', 'Athletic Bilbao'],
+        ['Wolverhampton Wanderers', 'Wolves'],
+        ['Internazionale', 'Inter Milan'],
+        ['Paris Saint-Germain', 'PSG'],
+        ['Bayer 04 Leverkusen', 'Bayer Leverkusen']
+      ];
+      for (const [a, b] of positives) {
+        assert.equal(namesMatch(a, b), true, `expected match: ${a} ~ ${b}`);
+      }
+    });
+
+    it('never matches different clubs that share city tokens', () => {
+      const negatives = [
+        ['FC Barcelona', 'RCD Espanyol de Barcelona'],
+        ['FC Barcelona', 'Espanyol'],
+        ['Real Madrid', 'Atlético Madrid'],
+        ['Arsenal', 'Chelsea'],
+        ['Bayern Munich', 'Borussia Dortmund']
+      ];
+      for (const [a, b] of negatives) {
+        assert.equal(namesMatch(a, b), false, `expected NO match: ${a} !~ ${b}`);
+      }
+    });
+
+    it('is symmetric and null-safe', () => {
+      assert.equal(namesMatch('Espanyol', 'RCD Espanyol de Barcelona'), true);
+      assert.equal(namesMatch('', ''), false);
+      assert.equal(namesMatch(null, 'Bayern Munich'), false);
+    });
+
+    it('watched-fixture rule works across provider spellings', () => {
+      const fdStyle = normalizeFixture({
+        id: 1, utcDate: '2026-08-22T16:30:00Z', status: 'IN_PLAY',
+        homeTeam: { name: 'FC Bayern München' }, awayTeam: { name: 'Borussia Dortmund' },
+        competition: { code: 'GER-SC' }
+      });
+      const keylessFav = [{ id: '', name: 'Bayern Munich', crest: '', competitionCode: 'BL1' }];
+      assert.equal(isWatchedFixture(fdStyle, keylessFav, []), true);
     });
   });
 
