@@ -177,7 +177,7 @@ describe('Football Monitor Tests', () => {
       favoriteTeams: [{ id: '529', name: 'Barcelona', crest: '', competitionCode: 'PD' }],
       pinnedFixtures: [], leagues: ['PL'], reminderMinutes: 15, liveBoost: false,
       espnProvider: null, fdProvider: fd,
-      nowFn: () => Date.now(), paceMs: 0,
+      nowFn: () => KICKOFF, paceMs: 0,
       onFixtureEvent: () => {}, onError: () => {}
     });
     await mon.checkSweep();
@@ -210,7 +210,7 @@ describe('Football Monitor Tests', () => {
       store,
       favoriteTeams: [], pinnedFixtures: [], leagues: ['PL'], reminderMinutes: 15, liveBoost: true,
       espnProvider: espn, fdProvider: null,
-      nowFn: () => Date.now(), paceMs: 0,
+      nowFn: () => KICKOFF, paceMs: 0,
       onFixtureEvent: () => {}, onError: () => {}
     });
     await mon.checkSweep();
@@ -329,7 +329,7 @@ describe('Football Monitor Tests', () => {
       store,
       favoriteTeams: [], pinnedFixtures: [], leagues: ['PL'], reminderMinutes: 15, liveBoost: true,
       espnProvider: espn, fdProvider: null,
-      nowFn: () => Date.now(), paceMs: 0,
+      nowFn: () => KICKOFF, paceMs: 0,
       onFixtureEvent: () => {}, onError: () => {}
     });
     await mon.checkSweep();
@@ -369,7 +369,7 @@ describe('Football Monitor Tests', () => {
       favoriteTeams: [{ id: '132', name: 'Bayern Munich', crest: '', espnSlug: 'ger.1', espnTeamId: '132' }],
       pinnedFixtures: [], leagues: ['PL'], reminderMinutes: 15, liveBoost: true,
       espnProvider: espn, fdProvider: null,
-      nowFn: () => Date.now(), paceMs: 0,
+      nowFn: () => KICKOFF, paceMs: 0,
       onFixtureEvent: () => {}, onError: () => {}
     });
     await mon.checkSweep();

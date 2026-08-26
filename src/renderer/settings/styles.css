@@ -1661,6 +1661,201 @@ body {
   padding: 6px 14px;
   background: var(--section-bg);
   border: 1px solid var(--section-border);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--title-color);
+  margin: 0;
+}
+
+.guide-card-subtitle {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.guide-free-badge {
+  display: inline-block;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  border: 1px solid #c8e6c9;
+}
+
+.guide-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.guide-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-label);
+  line-height: 1.4;
+}
+
+.step-badge {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--control-btn-bg);
+  color: var(--title-color);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+  border: 1px solid var(--section-border);
+}
+
+.step-desc {
+  flex: 1;
+}
+
+.step-desc code {
+  background: var(--input-bg);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-accent);
+  border: 1px solid var(--section-border);
+}
+
+.guide-tips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.guide-tip-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--text-label);
+  line-height: 1.4;
+  background: var(--input-bg);
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--section-border);
+}
+
+.guide-tip-item code {
+  background: var(--section-bg);
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-accent);
+  border: 1px solid var(--section-border);
+}
+
+.tip-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+/* ================= Football Tab (plan §3.1) ================= */
+
+.league-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.league-chip {
+  cursor: pointer;
+  border: 1px solid var(--pill-border);
+  background: var(--pill-bg);
+  color: var(--pill-text);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+}
+
+.league-chip:hover {
+  border-color: var(--input-focus-border);
+}
+
+.league-chip.active {
+  background: var(--pill-active-bg);
+  color: var(--pill-active-text);
+  border-color: transparent;
+}
+
+.fb-date-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: var(--header-bg);
+  border: 1.5px solid var(--header-border);
+  border-radius: 14px;
+  user-select: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: all 200ms ease;
+}
+
+.fb-date-nav:hover {
+  border-color: var(--input-focus-border);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.10);
+}
+
+.fb-nav-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1.5px solid var(--header-border);
+  background: var(--section-bg);
+  color: var(--title-color);
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fb-nav-btn:hover {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  border-color: transparent;
+  transform: scale(1.08);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.fb-nav-btn:active {
+  transform: scale(0.92);
+}
+
+.fb-nav-btn:focus-visible {
+  outline: 2px solid var(--input-focus-border);
+  outline-offset: 2px;
+}
+
+.fb-date-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  padding: 6px 14px;
+  background: var(--section-bg);
+  border: 1px solid var(--section-border);
   border-radius: 999px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
   transition: all 180ms ease;
@@ -1690,7 +1885,6 @@ body {
 }
 
 .fb-date-icon {
-  font-size: 14px;
   font-size: 15px;
 }
 
@@ -1826,6 +2020,14 @@ body {
   color: var(--text-muted);
   min-width: 44px;
   text-align: center;
+}
+
+.score-val {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--fb-live-accent);
+  padding: 0 4px;
 }
 
 .comp-chip {

@@ -207,6 +207,25 @@ function createFootballMonitor({
       });
     }
 
+    for (const p of pinnedFixtures) {
+      if (p && p.id && !targets.has(p.id)) {
+        const kMs = p.kickoffUtc ? Date.parse(p.kickoffUtc) : null;
+        if (!kMs || (now >= kMs - windowStartMs && now <= kMs + windowEndMs) || p.status === 'live') {
+          targets.set(p.id, {
+            id: p.id,
+            homeName: p.homeTeam ? p.homeTeam.name : '',
+            awayName: p.awayTeam ? p.awayTeam.name : '',
+            competitionCode: p.competition ? p.competition.code : '',
+            kickoffUtc: p.kickoffUtc,
+            kickoffMs: kMs,
+            status: p.status || 'scheduled',
+            cachedStatus: p.status || 'scheduled',
+            fromCache: false
+          });
+        }
+      }
+    }
+
     let statuses = new Map();
 
     if (espnProvider && liveBoost) {
@@ -221,13 +240,31 @@ function createFootballMonitor({
       try {
         const states = await espnProvider.fetchLiveState([...fdCodeSet, ...watchedExtraCodes]);
         for (const s of states) {
-          // Match against cached watched fixtures by club identity...
+          const st = statusFromEspnState(s.state);
+
+          // Update any cached fixture in FIXTURES_KEY so all games in schedule receive live scores/minutes
+          const currentFixtures = store.get(FIXTURES_KEY, []);
+          const cachedMatch = currentFixtures.find(f =>
+            namesMatch(f.homeTeam && f.homeTeam.name, s.homeName) &&
+            namesMatch(f.awayTeam && f.awayTeam.name, s.awayName)
+          );
+          if (cachedMatch) {
+            cachedMatch.status = st;
+            cachedMatch.minute = s.minute;
+            cachedMatch.score = {
+              home: s.scoreHome != null ? s.scoreHome : (cachedMatch.score ? cachedMatch.score.home : null),
+              away: s.scoreAway != null ? s.scoreAway : (cachedMatch.score ? cachedMatch.score.away : null)
+            };
+            store.set(FIXTURES_KEY, currentFixtures);
+          }
+
+          // Match against watched/pinned targets...
           const match = [...targets.values()].find(t =>
             namesMatch(t.homeName, s.homeName) && namesMatch(t.awayName, s.awayName)
           );
 
           if (match) {
-            match.status = statusFromEspnState(s.state);
+            match.status = st;
             match.minute = s.minute;
             match.scoreHome = s.scoreHome;
             match.scoreAway = s.scoreAway;
@@ -246,7 +283,7 @@ function createFootballMonitor({
               competitionCode: s.competitionCode || '',
               kickoffUtc: s.kickoffUtc || null,
               kickoffMs: s.kickoffUtc ? Date.parse(s.kickoffUtc) : null,
-              status: statusFromEspnState(s.state),
+              status: st,
               cachedStatus: null,
               fromCache: false,
               minute: s.minute,
@@ -486,7 +523,7 @@ function createFootballMonitor({
 
     const all = [...merged.values()];
     const cutoff = nowFn() - 2 * dayMs;
-    store.set(FIXTURES_KEY, all.filter(f => !f.kickoffUtc || Date.parse(f.kickoffUtc) > cutoff));
+    store.set(FIXTURES_KEY, all.filter(f => Boolean(f.kickoffUtc) && Date.parse(f.kickoffUtc) > cutoff));
     onStatusUpdate(getStatus());
     return getStatus();
   }

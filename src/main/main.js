@@ -18,6 +18,7 @@ const {
   addFavoriteTeam,
   removeFavoriteTeam,
   togglePinnedFixture,
+  repairPinnedFixtures,
   normalizeFixture,
   isBigMatch,
   isWatchedFixture,
@@ -99,6 +100,14 @@ function buildFootballMonitor() {
     fetchFn: (url) => fetch(url),
     onError: logFootballError
   });
+
+  const cachedFixtures = store.get(FIXTURES_KEY, []);
+  if (Array.isArray(cachedFixtures)) {
+    const cleaned = cachedFixtures.filter(f => f && f.kickoffUtc);
+    if (cleaned.length !== cachedFixtures.length) {
+      store.set(FIXTURES_KEY, cleaned);
+    }
+  }
 
   footballMonitor = createFootballMonitor({
     store,
@@ -623,19 +632,27 @@ function broadcastFootballStatus() {
   }
 }
 
-ipcMain.handle('get-football-state', guardFootball(() => ({
-  success: true,
-  enabled: true,
-  apiKey: store.get('footballApiKey', ''),
-  favoriteTeams: store.get('footballFavoriteTeams', []),
-  pinnedFixtures: store.get('footballPinnedFixtures', []),
-  leagues: store.get('footballLeagues', []),
-  allLeagues: store.get('footballAllLeagues', true),
-  cupsEnabled: store.get('footballCupsEnabled', true),
-  liveBoost: store.get('footballLiveBoost', true),
-  reminderMinutes: store.get('matchReminderMinutes', 15),
-  status: footballMonitor ? footballMonitor.getStatus() : null
-})));
+ipcMain.handle('get-football-state', guardFootball(() => {
+  const pins = store.get('footballPinnedFixtures', []);
+  const schedule = store.get(FIXTURES_KEY, []);
+  const repairedPins = repairPinnedFixtures(pins, schedule);
+  if (JSON.stringify(pins) !== JSON.stringify(repairedPins)) {
+    store.set('footballPinnedFixtures', repairedPins);
+  }
+  return {
+    success: true,
+    enabled: true,
+    apiKey: store.get('footballApiKey', ''),
+    favoriteTeams: store.get('footballFavoriteTeams', []),
+    pinnedFixtures: repairedPins,
+    leagues: store.get('footballLeagues', []),
+    allLeagues: store.get('footballAllLeagues', true),
+    cupsEnabled: store.get('footballCupsEnabled', true),
+    liveBoost: store.get('footballLiveBoost', true),
+    reminderMinutes: store.get('matchReminderMinutes', 15),
+    status: footballMonitor ? footballMonitor.getStatus() : null
+  };
+}));
 
 ipcMain.handle('get-football-schedule', guardFootball(() => {
   const favorites = store.get('footballFavoriteTeams', []);

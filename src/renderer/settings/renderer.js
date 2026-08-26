@@ -1319,6 +1319,14 @@ function renderFixturesInner() {
   let html = dayFixtures.map(f => {
     const live = f.status === 'live';
     const finished = f.status === 'finished';
+
+    const homeHtml = (live || finished)
+      ? `${escapeHtml(f.homeTeam.name)} ${crestHtml(f.homeTeam)} <strong class="score-val">${f.score.home ?? 0}</strong>`
+      : `${escapeHtml(f.homeTeam.name)} ${crestHtml(f.homeTeam)}`;
+    const awayHtml = (live || finished)
+      ? `<strong class="score-val">${f.score.away ?? 0}</strong> ${crestHtml(f.awayTeam)} ${escapeHtml(f.awayTeam.name)}`
+      : `${crestHtml(f.awayTeam)} ${escapeHtml(f.awayTeam.name)}`;
+
     const center = finished
       ? `<span class="fixture-score">${f.score.home ?? '-'} : ${f.score.away ?? '-'}</span>`
       : live
@@ -1327,9 +1335,9 @@ function renderFixturesInner() {
     return `
     <div class="fixture-row ${live ? 'is-live' : ''}" data-fixture-id="${escapeHtml(f.id)}">
       <div class="fixture-teams">
-        <span class="fixture-team home">${escapeHtml(f.homeTeam.name)} ${crestHtml(f.homeTeam)}</span>
+        <span class="fixture-team home">${homeHtml}</span>
         ${center}
-        <span class="fixture-team away">${crestHtml(f.awayTeam)} ${escapeHtml(f.awayTeam.name)}</span>
+        <span class="fixture-team away">${awayHtml}</span>
       </div>
       ${f.bigMatch ? SVG_ICONS.flame : ''}
       ${(LEAGUE_LABELS[f.competition.code] || f.competition.code) ? `<span class="comp-chip">${escapeHtml(LEAGUE_LABELS[f.competition.code] || f.competition.code)}</span>` : ''}
@@ -1366,16 +1374,44 @@ function renderPinnedFixtures() {
     pinnedFixturesListEl.innerHTML = '<div class="fb-empty">No pinned fixtures yet. Star a match in the 📅 Matches tab!</div>';
     return;
   }
-  pinnedFixturesListEl.innerHTML = footballState.pinnedFixtures.map(f => `
-    <div class="fixture-row">
+  pinnedFixturesListEl.innerHTML = footballState.pinnedFixtures.map(pf => {
+    const cached = fixturesCache.find(c =>
+      c.id === pf.id ||
+      (c.homeTeam && pf.homeTeam && c.homeTeam.name.toLowerCase() === pf.homeTeam.name.toLowerCase() &&
+       c.awayTeam && pf.awayTeam && c.awayTeam.name.toLowerCase() === pf.awayTeam.name.toLowerCase())
+    );
+    const kickoff = pf.kickoffUtc || (cached && cached.kickoffUtc);
+    const status = (cached && cached.status) || pf.status || 'scheduled';
+    const minute = (cached && cached.minute != null) ? cached.minute : pf.minute;
+    const score = (cached && cached.score) ? cached.score : (pf.score || { home: null, away: null });
+
+    const live = status === 'live';
+    const finished = status === 'finished';
+
+    const homeHtml = (live || finished)
+      ? `${escapeHtml(pf.homeTeam.name)} ${crestHtml(pf.homeTeam)} <strong class="score-val">${score.home ?? 0}</strong>`
+      : `${escapeHtml(pf.homeTeam.name)} ${crestHtml(pf.homeTeam)}`;
+    const awayHtml = (live || finished)
+      ? `<strong class="score-val">${score.away ?? 0}</strong> ${crestHtml(pf.awayTeam)} ${escapeHtml(pf.awayTeam.name)}`
+      : `${crestHtml(pf.awayTeam)} ${escapeHtml(pf.awayTeam.name)}`;
+
+    const centerHtml = live
+      ? `<span class="fixture-score">${escapeHtml(minute || 'LIVE')}</span>`
+      : finished
+        ? `<span class="fixture-score">${score.home ?? '-'} : ${score.away ?? '-'}</span>`
+        : `<span class="fixture-kickoff">${kickoff ? new Date(kickoff).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : 'TBD'}</span>`;
+
+    return `
+    <div class="fixture-row ${live ? 'is-live' : ''}">
       <div class="fixture-teams">
-        <span class="fixture-team home">${escapeHtml(f.homeTeam.name)}</span>
-        <span class="fixture-kickoff">${new Date(f.kickoffUtc).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-        <span class="fixture-team away">${escapeHtml(f.awayTeam.name)}</span>
+        <span class="fixture-team home">${homeHtml}</span>
+        ${centerHtml}
+        <span class="fixture-team away">${awayHtml}</span>
       </div>
-      <button type="button" class="star-btn pinned" data-unpin-id="${escapeHtml(f.id)}" title="Unpin">${SVG_ICONS.starFilled}</button>
-    </div>
-  `).join('');
+      <button type="button" class="star-btn pinned" data-unpin-id="${escapeHtml(pf.id)}" title="Unpin">${SVG_ICONS.starFilled}</button>
+    </div>`;
+  }).join('');
+
   pinnedFixturesListEl.querySelectorAll('[data-unpin-id]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const fixture = footballState.pinnedFixtures.find(f => f.id === btn.dataset.unpinId);
@@ -1525,6 +1561,7 @@ if (typeof window.api.onFootballStatusUpdated === 'function') {
     window.api.getFootballSchedule().then(sched => {
       fixturesCache = (sched && sched.fixtures) || [];
       renderFixtures();
+      renderPinnedFixtures();
     }).catch(err => console.error('Football schedule refresh failed:', err));
   });
 }

@@ -39,11 +39,13 @@ function normalizeFixture(raw) {
   if (raw.status === 'CANCELLED') return null;
 
   const fullTime = (raw.score && raw.score.fullTime) || {};
+  const scoreHome = raw.score ? (raw.score.home != null ? raw.score.home : (fullTime.home != null ? fullTime.home : null)) : null;
+  const scoreAway = raw.score ? (raw.score.away != null ? raw.score.away : (fullTime.away != null ? fullTime.away : null)) : null;
 
   return {
     id: String(raw.id),
-    kickoffUtc: raw.utcDate || null,
-    status: STATUS_MAP[raw.status] || 'scheduled',
+    kickoffUtc: raw.kickoffUtc || raw.utcDate || null,
+    status: STATUS_MAP[raw.status] || (['scheduled', 'live', 'finished'].includes(raw.status) ? raw.status : 'scheduled'),
     minute: raw.minute != null ? String(raw.minute) : null,
     homeTeam: normalizeTeam(raw.homeTeam) || { id: '', name: 'Unknown', crest: '' },
     awayTeam: normalizeTeam(raw.awayTeam) || { id: '', name: 'Unknown', crest: '' },
@@ -52,8 +54,8 @@ function normalizeFixture(raw) {
       name: (raw.competition && raw.competition.name) || ''
     },
     score: {
-      home: fullTime.home != null ? fullTime.home : null,
-      away: fullTime.away != null ? fullTime.away : null
+      home: scoreHome,
+      away: scoreAway
     }
   };
 }
@@ -122,6 +124,34 @@ function togglePinnedFixture(list = [], fixture) {
     next.push(normalizeFixture(fixture) || fixture);
   }
   return next;
+}
+
+/**
+ * Repairs/enriches a list of pinned fixtures: if any pinned fixture is missing kickoffUtc
+ * or has stale status, look it up in the schedule list by id or club identity and merge properties.
+ */
+function repairPinnedFixtures(pinnedList = [], scheduleList = []) {
+  if (!Array.isArray(pinnedList)) return [];
+  const schedule = Array.isArray(scheduleList) ? scheduleList : [];
+  return pinnedList.map(pin => {
+    if (!pin) return pin;
+    const match = schedule.find(f =>
+      f && (f.id === pin.id || (namesMatch(f.homeTeam && f.homeTeam.name, pin.homeTeam && pin.homeTeam.name) && namesMatch(f.awayTeam && f.awayTeam.name, pin.awayTeam && pin.awayTeam.name)))
+    );
+    if (match) {
+      return {
+        ...pin,
+        kickoffUtc: pin.kickoffUtc || match.kickoffUtc || null,
+        status: match.status || pin.status || 'scheduled',
+        minute: match.minute != null ? match.minute : pin.minute,
+        score: {
+          home: match.score && match.score.home != null ? match.score.home : (pin.score ? pin.score.home : null),
+          away: match.score && match.score.away != null ? match.score.away : (pin.score ? pin.score.away : null)
+        }
+      };
+    }
+    return pin;
+  });
 }
 
 function normalizeClubName(name) {
@@ -315,6 +345,7 @@ module.exports = {
   addFavoriteTeam,
   removeFavoriteTeam,
   togglePinnedFixture,
+  repairPinnedFixtures,
   isWatchedFixture,
   filterScheduleFixtures,
   isBigMatch,

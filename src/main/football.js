@@ -188,6 +188,23 @@ function espnStatusFromState(state) {
   return 'scheduled';
 }
 
+function formatEspnMinute(status) {
+  if (!status) return null;
+  const type = status.type || {};
+  if (type.state !== 'in') return null;
+  const short = type.shortDetail ? String(type.shortDetail).trim() : '';
+  if (short && (short.includes("'") || short === 'HT' || short === 'HALFTIME')) {
+    return short;
+  }
+  const clock = status.displayClock;
+  if (clock != null && clock !== '') {
+    const clkStr = String(clock).trim();
+    if (clkStr === '0' || clkStr === '0.0') return "1'";
+    return clkStr.includes("'") ? clkStr : `${clkStr}'`;
+  }
+  return short || 'LIVE';
+}
+
 /**
  * Live Boost provider — ESPN public scoreboard (keyless, unofficial).
  */
@@ -210,7 +227,7 @@ function createEspnProvider({ baseUrl = ESPN_BASE, fetchFn, onError = () => {} }
       id: `espn:${event.id}`,
       kickoffUtc: event.date || null,
       status: espnStatusFromState(statusType.state),
-      minute: status.displayClock || null,
+      minute: formatEspnMinute(status),
       homeTeam: { id: '', name: home.team && home.team.displayName || '', crest: getTeamCrest(home.team) },
       awayTeam: { id: '', name: away.team && away.team.displayName || '', crest: getTeamCrest(away.team) },
       competition: { code: resolvedCode, name: leagueName || '' },
