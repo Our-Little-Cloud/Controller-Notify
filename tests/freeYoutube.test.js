@@ -146,5 +146,29 @@ describe('YouTube Free (0-Quota) Live Check Engine Tests', () => {
         }
       );
     });
+
+    it('should correctly decode HTML entities and fix Mojibake symbols in title and channelTitle', async () => {
+      const mockHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>lofi hip hop radio &amp; beats &lt;3&#39;n&#39;study - YouTube</title>
+            <link rel="canonical" href="https://www.youtube.com/watch?v=lofi123">
+            <meta property="og:title" content="lofi hip hop radio &#128218; &amp; beats &#x1F4DA; - YouTube">
+            <meta name="author" content="Lofi Girl &amp; Friends">
+          </head>
+          <body>{"isLiveNow":true,"isLive":true}</body>
+        </html>
+      `;
+
+      mock.method(axios, 'get', async () => {
+        return { data: mockHtml };
+      });
+
+      const result = await checkLiveStatusFree('@lofigirl');
+      assert.equal(result.isLive, true);
+      assert.equal(result.title, 'lofi hip hop radio 📚 & beats 📚');
+      assert.equal(result.channelTitle, 'Lofi Girl & Friends');
+    });
   });
 });

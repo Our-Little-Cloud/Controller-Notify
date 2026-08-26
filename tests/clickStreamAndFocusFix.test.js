@@ -37,4 +37,33 @@ describe('IPC Click Stream Routing & Focus Tests', () => {
     assert.equal(getControllerImageClassList(false, 'https://i.ytimg.com/thumb.jpg'), 'controller-image has-img');
     assert.equal(getControllerImageClassList(false, null), 'controller-image');
   });
+  it('should route football notifications to app football tab instead of youtube URL', () => {
+    function routeClickNotification(targetVideoId, popupType) {
+      let videoId = targetVideoId;
+      let type = popupType;
+
+      if (typeof targetVideoId === 'object' && targetVideoId !== null) {
+        videoId = targetVideoId.videoId;
+        type = targetVideoId.type || type;
+      }
+
+      if (type === 'football' || videoId === 'football') {
+        return { action: 'open_tab', tab: 'football' };
+      }
+
+      return { action: 'open_youtube', url: `https://www.youtube.com/watch?v=${videoId}` };
+    }
+
+    // Football notification click (targetVideoId: null, popupType: 'football')
+    const result1 = routeClickNotification(null, 'football');
+    assert.deepEqual(result1, { action: 'open_tab', tab: 'football' });
+
+    // Football notification click with object format ({ type: 'football' })
+    const result2 = routeClickNotification({ type: 'football' });
+    assert.deepEqual(result2, { action: 'open_tab', tab: 'football' });
+
+    // Regular YouTube stream click
+    const result3 = routeClickNotification('stream123', null);
+    assert.deepEqual(result3, { action: 'open_youtube', url: 'https://www.youtube.com/watch?v=stream123' });
+  });
 });

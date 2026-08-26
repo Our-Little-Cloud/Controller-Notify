@@ -39,11 +39,13 @@ function normalizeFixture(raw) {
   if (raw.status === 'CANCELLED') return null;
 
   const fullTime = (raw.score && raw.score.fullTime) || {};
+  const scoreHome = raw.score ? (raw.score.home != null ? raw.score.home : (fullTime.home != null ? fullTime.home : null)) : null;
+  const scoreAway = raw.score ? (raw.score.away != null ? raw.score.away : (fullTime.away != null ? fullTime.away : null)) : null;
 
   return {
     id: String(raw.id),
-    kickoffUtc: raw.utcDate || null,
-    status: STATUS_MAP[raw.status] || 'scheduled',
+    kickoffUtc: raw.kickoffUtc || raw.utcDate || null,
+    status: STATUS_MAP[raw.status] || (['scheduled', 'live', 'finished'].includes(raw.status) ? raw.status : 'scheduled'),
     minute: raw.minute != null ? String(raw.minute) : null,
     homeTeam: normalizeTeam(raw.homeTeam) || { id: '', name: 'Unknown', crest: '' },
     awayTeam: normalizeTeam(raw.awayTeam) || { id: '', name: 'Unknown', crest: '' },
@@ -52,8 +54,8 @@ function normalizeFixture(raw) {
       name: (raw.competition && raw.competition.name) || ''
     },
     score: {
-      home: fullTime.home != null ? fullTime.home : null,
-      away: fullTime.away != null ? fullTime.away : null
+      home: scoreHome,
+      away: scoreAway
     }
   };
 }
@@ -124,28 +126,133 @@ function togglePinnedFixture(list = [], fixture) {
   return next;
 }
 
+/**
+ * Repairs/enriches a list of pinned fixtures: if any pinned fixture is missing kickoffUtc
+ * or has stale status, look it up in the schedule list by id or club identity and merge properties.
+ */
+function repairPinnedFixtures(pinnedList = [], scheduleList = []) {
+  if (!Array.isArray(pinnedList)) return [];
+  const schedule = Array.isArray(scheduleList) ? scheduleList : [];
+  return pinnedList.map(pin => {
+    if (!pin) return pin;
+    const match = schedule.find(f =>
+      f && (f.id === pin.id || (namesMatch(f.homeTeam && f.homeTeam.name, pin.homeTeam && pin.homeTeam.name) && namesMatch(f.awayTeam && f.awayTeam.name, pin.awayTeam && pin.awayTeam.name)))
+    );
+    if (match) {
+      return {
+        ...pin,
+        kickoffUtc: pin.kickoffUtc || match.kickoffUtc || null,
+        status: match.status || pin.status || 'scheduled',
+        minute: match.minute != null ? match.minute : pin.minute,
+        score: {
+          home: match.score && match.score.home != null ? match.score.home : (pin.score ? pin.score.home : null),
+          away: match.score && match.score.away != null ? match.score.away : (pin.score ? pin.score.away : null)
+        }
+      };
+    }
+    return pin;
+  });
+}
+
 function normalizeClubName(name) {
   return String(name || '').toLowerCase().replace(/\s+fc$|\s+cf$|\s+afc$/, '').trim();
 }
 
+// Unicode-fold a club name: lowercase, strip diacritics (ü→u), ß→ss,
+// drop punctuation, collapse spaces. Output is the canonical comparison form.
+function foldName(name) {
+  return String(name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/g, 'ss')
+    .replace(/[.'`´]/g, '')
+    .replace(/&/g, 'and')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\s+fc$|\s+cf$|\s+afc$/, '');
+}
+
+/**
+ * Alias groups: provider name variants that refer to the same club
+ * (fd.org / bundled list vs ESPN spellings), compared in folded form.
+ * Groups are deliberately conservative — different clubs sharing a city
+ * token (Barcelona vs RCD Espanyol de Barcelona) stay in separate groups.
+ */
+const CLUB_ALIAS_GROUPS = [
+  ['bayern munich', 'bayern munchen', 'fc bayern munchen', 'fc bayern', 'bayern'],
+  ['real madrid', 'real madrid cf'],
+  ['espanyol', 'rcd espanyol', 'espanyol de barcelona', 'rcd espanyol de barcelona'],
+  ['athletic club', 'athletic bilbao'],
+  ['wolverhampton wanderers', 'wolves'],
+  ['internazionale', 'inter milan', 'inter'],
+  ['paris saint germain', 'psg'],
+  ['bayer leverkusen', 'bayer 04 leverkusen'],
+  ['atletico madrid', 'club atletico de madrid'],
+  ['real betis', 'real betis balompie'],
+  ['real sociedad', 'real sociedad de futbol'],
+  ['celta vigo', 'rc celta de vigo', 'rc celta'],
+  ['deportivo alaves', 'alaves'],
+  ['rayo vallecano', 'rayo vallecano de madrid'],
+  ['sevilla', 'sevilla fc'],
+  ['valencia', 'valencia cf'],
+  ['villarreal', 'villarreal cf'],
+  ['elche', 'elche cf'],
+  ['levante', 'levante ud'],
+  ['getafe', 'getafe cf'],
+  ['osasuna', 'ca osasuna'],
+  ['mallorca', 'rcd mallorca'],
+  ['manchester united', 'man utd', 'manchester utd'],
+  ['manchester city', 'man city'],
+  ['tottenham hotspur', 'tottenham'],
+  ['newcastle united', 'newcastle'],
+  ['west ham united', 'west ham'],
+  ['brighton and hove albion', 'brighton'],
+  ['leeds united', 'leeds']
+];
+
+const CLUB_ALIAS_LOOKUP = (() => {
+  const map = new Map();
+  for (const group of CLUB_ALIAS_GROUPS) {
+    const members = group.map(foldName);
+    const groupId = members[0];
+    for (const m of members) map.set(m, groupId);
+  }
+  return map;
+})();
+
+/**
+ * Cross-provider club identity: true when two spelled variants refer to the
+ * same club. Exact-fold equality OR membership in the same alias group.
+ */
+function namesMatch(a, b) {
+  if (!a || !b) return false;
+  const fa = foldName(a);
+  const fb = foldName(b);
+  if (!fa || !fb) return false;
+  if (fa === fb) return true;
+  const ga = CLUB_ALIAS_LOOKUP.get(fa);
+  if (!ga) return false;
+  return ga === CLUB_ALIAS_LOOKUP.get(fb);
+}
+
 /**
  * Watched Fixture rule: a Favorite Team is playing OR the fixture is pinned.
- * Matches favorites by provider team id OR normalized club name so keyless
- * big-clubs favorites work before any API data exists.
+ * Matches favorites by provider team id OR cross-provider club-name identity
+ * (namesMatch) so keyless big-clubs favorites work before any API data exists.
  */
 function isWatchedFixture(fixture, favoriteTeams = [], pinnedFixtures = []) {
   if (!fixture || !fixture.id) return false;
   if (pinnedFixtures.some(f => f.id === fixture.id)) return true;
 
-  const sideNames = [normalizeClubName(fixture.homeTeam && fixture.homeTeam.name),
-    normalizeClubName(fixture.awayTeam && fixture.awayTeam.name)];
+  const sideNames = [fixture.homeTeam && fixture.homeTeam.name, fixture.awayTeam && fixture.awayTeam.name];
   const sideIds = [fixture.homeTeam && fixture.homeTeam.id, fixture.awayTeam && fixture.awayTeam.id];
 
   return favoriteTeams.some(t => {
     const favId = t.id != null ? String(t.id) : '';
     if (favId && sideIds.includes(favId)) return true;
-    const favName = normalizeClubName(t.name);
-    return favName !== '' && sideNames.includes(favName);
+    return sideNames.some(n => namesMatch(n, t.name));
   });
 }
 
@@ -238,11 +345,14 @@ module.exports = {
   addFavoriteTeam,
   removeFavoriteTeam,
   togglePinnedFixture,
+  repairPinnedFixtures,
   isWatchedFixture,
   filterScheduleFixtures,
   isBigMatch,
   monogram,
   normalizeClubName,
+  namesMatch,
+  foldName,
   loadBigClubs,
   searchBigClubs
 };
