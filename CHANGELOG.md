@@ -2,6 +2,17 @@
 
 All notable changes to Controller Notify are documented here.
 
+## [1.0.3] — Live Scores & Formatting Update
+
+### Added
+- Real-time live scoreboard & minute updates across all matches in the schedule
+- Standardized fixture row element order (`Team Name` `Logo` `Score` `Minute` `Score` `Logo` `Team Name`) across Matches and Pinned Fixtures
+- Shared monospace font styling (`score-val`) for score display in both Matches and Pinned Fixtures
+
+### Fixed
+- Automatic sanitization of legacy local configuration cache containing null kickoff times
+- Stale "TBD" display in pinned fixtures auto-repaired on startup
+
 ## [1.0.2] — Football Update
 
 ### Added
