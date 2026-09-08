@@ -1121,7 +1121,9 @@ async function loadFootballTab() {
     renderLeagueChips(leagueChipsEl, footballState.leagues, footballState.cupsEnabled, footballState.allMode);
     renderFavLeagueChips(favLeagueChipsEl, favSearchLeague);
     renderFavoriteTeams();
+    renderFavoriteTeamsMatches();
     renderPinnedFixtures();
+    renderFavoriteTeamsMatches();
     renderFixtures();
     updateFootballBanner();
   } catch (error) {
@@ -1178,13 +1180,15 @@ async function toggleCups() {
 }
 
 async function toggleLeague(code) {
-  // Clicking a league chip exits All mode and selects that chip; clicking a
-  // selected chip deselects it (multi-select across clicks).
-  footballState.allMode = false;
-  if (footballState.leagues.includes(code)) {
-    footballState.leagues = footballState.leagues.filter(c => c !== code);
+  if (footballState.allMode) {
+    footballState.allMode = false;
+    footballState.leagues = [code];
   } else {
-    footballState.leagues = [...footballState.leagues, code];
+    if (footballState.leagues.includes(code)) {
+      footballState.leagues = footballState.leagues.filter(c => c !== code);
+    } else {
+      footballState.leagues = [...footballState.leagues, code];
+    }
   }
   await saveLeagues();
 }
@@ -1328,22 +1332,26 @@ function renderFixturesInner() {
       : `${crestHtml(f.awayTeam)} ${escapeHtml(f.awayTeam.name)}`;
 
     const center = finished
-      ? `<span class="fixture-score">${f.score.home ?? '-'} : ${f.score.away ?? '-'}</span>`
+      ? `<span class="fixture-kickoff">FT</span>`
       : live
         ? `<span class="fixture-score">${escapeHtml(f.minute || 'LIVE')}</span>`
         : `<span class="fixture-kickoff">${new Date(f.kickoffUtc).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`;
     return `
     <div class="fixture-row ${live ? 'is-live' : ''}" data-fixture-id="${escapeHtml(f.id)}">
+      <div class="fixture-meta-left">
+        ${(LEAGUE_LABELS[f.competition.code] || f.competition.code) ? `<span class="comp-chip">${escapeHtml(LEAGUE_LABELS[f.competition.code] || f.competition.code)}</span>` : ''}
+      </div>
       <div class="fixture-teams">
         <span class="fixture-team home">${homeHtml}</span>
         ${center}
         <span class="fixture-team away">${awayHtml}</span>
       </div>
-      ${f.bigMatch ? SVG_ICONS.flame : ''}
-      ${(LEAGUE_LABELS[f.competition.code] || f.competition.code) ? `<span class="comp-chip">${escapeHtml(LEAGUE_LABELS[f.competition.code] || f.competition.code)}</span>` : ''}
-      <button type="button" class="star-btn ${isPinned(f) ? 'pinned' : ''}" data-pin-id="${escapeHtml(f.id)}" title="Pin fixture">
-        ${isPinned(f) ? SVG_ICONS.starFilled : SVG_ICONS.star}
-      </button>
+      <div class="fixture-meta-right">
+        ${f.bigMatch ? SVG_ICONS.flame : ''}
+        <button type="button" class="star-btn ${isPinned(f) ? 'pinned' : ''}" data-pin-id="${escapeHtml(f.id)}" title="Pin fixture">
+          ${isPinned(f) ? SVG_ICONS.starFilled : SVG_ICONS.star}
+        </button>
+      </div>
     </div>`;
   }).join('');
 
@@ -1361,6 +1369,7 @@ function renderFixturesInner() {
           footballState.pinnedFixtures = res.pinnedFixtures;
           renderFixtures();
           renderPinnedFixtures();
+    renderFavoriteTeamsMatches();
         }
       } catch (error) {
         console.error('Failed to toggle pin:', error);
@@ -1421,10 +1430,108 @@ function renderPinnedFixtures() {
         if (res.success) {
           footballState.pinnedFixtures = res.pinnedFixtures;
           renderPinnedFixtures();
+    renderFavoriteTeamsMatches();
           renderFixtures();
         }
       } catch (error) {
         console.error('Failed to unpin:', error);
+      }
+    });
+  });
+}
+
+function renderFavoriteTeamsMatches() {
+  const container = document.getElementById('favoriteTeamsMatchesList');
+  if (!container) return;
+  
+  if (footballState.favoriteTeams.length === 0) {
+    container.innerHTML = '<div class="fb-empty">Add a favorite team below to see their matches here.</div>';
+    return;
+  }
+
+  const now = new Date();
+  const next7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const startDay = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  let rawFavMatches = fixturesCache.filter(f => {
+    if (!isFavoriteSide(f)) return false;
+    if (!f.kickoffUtc) return true;
+    const date = new Date(f.kickoffUtc);
+    return date >= startDay && date <= next7Days;
+  });
+
+  const uniqueFavMatches = [];
+  const seen = new Set();
+  
+  for (const f of rawFavMatches) {
+    const dateStr = f.kickoffUtc ? new Date(f.kickoffUtc).toDateString() : 'tbd';
+    const key = `${(f.homeTeam && f.homeTeam.name ? f.homeTeam.name : '').toLowerCase()}-${(f.awayTeam && f.awayTeam.name ? f.awayTeam.name : '').toLowerCase()}-${dateStr}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueFavMatches.push(f);
+    }
+  }
+
+  const favMatches = uniqueFavMatches.sort((a, b) => Date.parse(a.kickoffUtc || 0) - Date.parse(b.kickoffUtc || 0));
+    
+  if (favMatches.length === 0) {
+    container.innerHTML = '<div class="fb-empty">No upcoming or recent matches found for your favorite teams.</div>';
+    return;
+  }
+  
+  container.innerHTML = favMatches.map(f => {
+    const live = f.status === 'live';
+    const finished = f.status === 'finished';
+
+    const homeHtml = (live || finished)
+      ? `${escapeHtml(f.homeTeam.name)} ${crestHtml(f.homeTeam)} <strong class="score-val">${f.score.home ?? 0}</strong>`
+      : `${escapeHtml(f.homeTeam.name)} ${crestHtml(f.homeTeam)}`;
+    const awayHtml = (live || finished)
+      ? `<strong class="score-val">${f.score.away ?? 0}</strong> ${crestHtml(f.awayTeam)} ${escapeHtml(f.awayTeam.name)}`
+      : `${crestHtml(f.awayTeam)} ${escapeHtml(f.awayTeam.name)}`;
+
+    const center = finished
+      ? `<span class="fixture-kickoff">FT</span>`
+      : live
+        ? `<span class="fixture-score">${escapeHtml(f.minute || 'LIVE')}</span>`
+        : `<span class="fixture-kickoff">${f.kickoffUtc ? new Date(f.kickoffUtc).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'TBD'}</span>`;
+    
+    return `
+    <div class="fixture-row ${live ? 'is-live' : ''}" data-fixture-id="${escapeHtml(f.id)}">
+      <div class="fixture-meta-left">
+        ${(LEAGUE_LABELS[f.competition.code] || f.competition.code) ? `<span class="comp-chip">${escapeHtml(LEAGUE_LABELS[f.competition.code] || f.competition.code)}</span>` : ''}
+      </div>
+      <div class="fixture-teams">
+        <span class="fixture-team home">${homeHtml}</span>
+        ${center}
+        <span class="fixture-team away">${awayHtml}</span>
+      </div>
+      <div class="fixture-meta-right">
+        ${f.bigMatch ? SVG_ICONS.flame : ''}
+        <button type="button" class="star-btn ${isPinned(f) ? 'pinned' : ''}" data-pin-id="${escapeHtml(f.id)}" title="Pin fixture">
+          ${isPinned(f) ? SVG_ICONS.starFilled : SVG_ICONS.star}
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+  
+  wireCrestFallbacks(container);
+  
+  container.querySelectorAll('.star-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const fixture = fixturesCache.find(f => f.id === btn.dataset.pinId);
+      if (!fixture) return;
+      try {
+        const res = await window.api.togglePinFixture(fixture);
+        if (res.success) {
+          footballState.pinnedFixtures = res.pinnedFixtures;
+          renderFixtures();
+          renderPinnedFixtures();
+    renderFavoriteTeamsMatches();
+        }
+      } catch (error) {
+        console.error('Failed to toggle pin:', error);
       }
     });
   });
@@ -1448,6 +1555,7 @@ function renderFavoriteTeams() {
         if (res.success) {
           footballState.favoriteTeams = res.favoriteTeams;
           renderFavoriteTeams();
+    renderFavoriteTeamsMatches();
           renderFixtures();
         }
       } catch (error) {
@@ -1486,6 +1594,7 @@ async function runTeamSearch() {
           if (res2.success) {
             footballState.favoriteTeams = res2.favoriteTeams;
             renderFavoriteTeams();
+    renderFavoriteTeamsMatches();
             renderFixtures();
             teamSearchResultsEl.innerHTML = `<div class="fb-empty">⭐ ${escapeHtml(el.dataset.teamName)} favorited!</div>`;
           }
@@ -1562,6 +1671,7 @@ if (typeof window.api.onFootballStatusUpdated === 'function') {
       fixturesCache = (sched && sched.fixtures) || [];
       renderFixtures();
       renderPinnedFixtures();
+    renderFavoriteTeamsMatches();
     }).catch(err => console.error('Football schedule refresh failed:', err));
   });
 }
@@ -1620,3 +1730,4 @@ if (window.api && typeof window.api.onSelectTab === 'function') {
 }
 
 loadSettings();
+

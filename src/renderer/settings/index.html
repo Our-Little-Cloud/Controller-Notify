@@ -264,7 +264,21 @@
       <!-- Sub-Tab 2: Favorites & Setup -->
       <div class="sub-tab-panel" id="subtab-fb-favorites" role="tabpanel" style="display: none;">
         <div class="section">
-          <h2 class="section-title">⭐ Favorite Teams</h2>
+          <h2 class="section-title">📌 Pinned Fixtures</h2>
+          <div id="pinnedFixturesList" class="pinned-list">
+            <div class="fb-empty">No pinned fixtures yet. Star a match in the 📅 Matches tab!</div>
+          </div>
+        </div>
+
+        <div class="section" style="margin-top: 16px;">
+          <h2 class="section-title">⭐ Favorite Teams Matches</h2>
+          <div id="favoriteTeamsMatchesList" class="fixtures-list">
+            <div class="fb-empty">Add a favorite team below to see their matches here.</div>
+          </div>
+        </div>
+
+        <div class="section" style="margin-top: 16px;">
+          <h2 class="section-title">❤️ Choose Favorite Teams</h2>
           <div class="league-chips" id="favLeagueChips"></div>
           <div class="input-with-btn" style="margin-top: 8px;">
             <input type="text" id="teamSearchInput" placeholder="Search a team to favorite..." autocomplete="off">
@@ -275,14 +289,7 @@
           <div id="favoriteTeamsList" class="favorite-chips" style="margin-top: 10px;"></div>
         </div>
 
-        <div class="section" style="margin-top: 16px;">
-          <h2 class="section-title">📌 Pinned Fixtures</h2>
-          <div id="pinnedFixturesList" class="pinned-list">
-            <div class="fb-empty">No pinned fixtures yet. Star a match in the 📅 Matches tab!</div>
-          </div>
-        </div>
-
-        <div class="section" style="margin-top: 16px;">
+        <div class="section" style="margin-top: 16px; display: none;">
           <h2 class="section-title">📡 Data Source</h2>
           <span class="help-text">Football fixtures and live scores come from ESPN automatically — no API key needed. Team search uses the built-in top-clubs list.</span>
         </div>

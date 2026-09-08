@@ -2040,6 +2040,22 @@ body {
   white-space: nowrap;
 }
 
+.fixture-meta-left {
+  display: flex;
+  align-items: center;
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.fixture-meta-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 50px;
+  flex-shrink: 0;
+}
+
 .fixture-row.is-live .fixture-score,
 .fixture-row.is-live .fb-live-dot { color: var(--fb-live-accent); }
 
