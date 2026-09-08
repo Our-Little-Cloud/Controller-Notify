@@ -176,21 +176,13 @@ function createFootballMonitor({
     const windowEndMs = 2 * 60 * 60 * 1000 + 45 * 60 * 1000; // 2h45m after kickoff
 
     const cached = store.get(FIXTURES_KEY, []);
-    const watchedCached = cached.filter(f =>
-      (
-        (isWatchedFixture(f, favoriteTeams, pinnedFixtures) ||
-          pinnedFixtures.some(p => p.id === f.id)) &&
-        (() => {
-          // Watcher only polls inside active match windows (plan §2.3)…
-          if (!f.kickoffUtc) return true;
-          const k = Date.parse(f.kickoffUtc);
-          return now >= k - windowStartMs && now <= k + windowEndMs;
-        })()
-      ) ||
-      // …but a fixture the cache believes is LIVE stays watched past the
-      // window so the dead-man switch can retire it.
-      f.status === 'live'
-    );
+    const watchedCached = cached.filter(f => {
+      const isWatched = isWatchedFixture(f, favoriteTeams, pinnedFixtures) || pinnedFixtures.some(p => p.id === f.id);
+      if (!isWatched) return false;
+      const k = f.kickoffUtc ? Date.parse(f.kickoffUtc) : null;
+      const inWindow = !k || (now >= k - windowStartMs && now <= k + windowEndMs);
+      return inWindow || f.status === 'live';
+    });
 
     const targets = new Map();
     for (const f of watchedCached) {
