@@ -252,19 +252,57 @@ function createEspnProvider({ baseUrl = ESPN_BASE, fetchFn, onError = () => {} }
   }
 
   /**
-   * Phase 1: full fixture list for an EXTRA cup competition within a date
-   * range (scoreboard supports YYYYMMDD-YYYYMMDD ranges).
+   * Fetch fixtures for a competition (league or extra cup).
+   * ESPN scoreboard rejects hyphenated date ranges (HTTP 400); we fetch the
+   * default scoreboard (current active round) and query any matchdays in
+   * the date window found in the league's calendar.
    */
   async function fetchFixtures(code, dateFrom, dateTo) {
     const slug = espnSlugFor(code);
     if (!slug) return [];
     const compact = (d) => String(d).replace(/-/g, '');
-    const url = `${baseUrl}/${slug}/scoreboard?dates=${compact(dateFrom)}-${compact(dateTo)}`;
-    const data = await fetchJsonOk(url);
-    const leagueName = (data.leagues && data.leagues[0] && data.leagues[0].name) || '';
-    return (data.events || [])
-      .map(e => eventToFixture(e, code, leagueName))
-      .filter(Boolean);
+
+    let defaultData;
+    try {
+      defaultData = await fetchJsonOk(`${baseUrl}/${slug}/scoreboard`);
+    } catch (err) {
+      onError(err, code);
+      return [];
+    }
+
+    const leagueName = (defaultData.leagues && defaultData.leagues[0] && defaultData.leagues[0].name) || '';
+    const rawEvents = [...(defaultData.events || [])];
+
+    const cal = defaultData.leagues && defaultData.leagues[0] && defaultData.leagues[0].calendar;
+    if (Array.isArray(cal) && typeof cal[0] === 'string' && dateFrom && dateTo) {
+      const fromCompact = compact(dateFrom);
+      const toCompact = compact(dateTo);
+      const targetDates = cal
+        .map(s => String(s).slice(0, 10).replace(/-/g, ''))
+        .filter(dStr => dStr >= fromCompact && dStr <= toCompact);
+
+      for (const td of targetDates) {
+        const alreadyFetched = rawEvents.some(e => e.date && compact(e.date.slice(0, 10)) === td);
+        if (alreadyFetched) continue;
+        try {
+          const dayData = await fetchJsonOk(`${baseUrl}/${slug}/scoreboard?dates=${td}`);
+          if (Array.isArray(dayData.events)) {
+            rawEvents.push(...dayData.events);
+          }
+        } catch {
+          // Non-fatal if a single date query fails
+        }
+      }
+    }
+
+    const uniqueMap = new Map();
+    for (const event of rawEvents) {
+      if (event && event.id && !uniqueMap.has(event.id)) {
+        const f = eventToFixture(event, code, leagueName);
+        if (f) uniqueMap.set(event.id, f);
+      }
+    }
+    return [...uniqueMap.values()];
   }
 
   /**

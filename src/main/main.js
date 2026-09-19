@@ -113,9 +113,9 @@ function buildFootballMonitor() {
     store,
     favoriteTeams: store.get('footballFavoriteTeams', []),
     pinnedFixtures: store.get('footballPinnedFixtures', []),
-    leagues: store.get('footballAllLeagues', true)
+    leagues: (store.get('footballAllLeagues', true)
       ? LEAGUES.map(l => l.code)
-      : store.get('footballLeagues', ['PL', 'PD', 'BL1', 'CL']),
+      : store.get('footballLeagues', ['PL', 'PD', 'BL1', 'CL'])).filter(c => c !== '__CUPS__'),
     cupsEnabled: store.get('footballCupsEnabled', true),
     reminderMinutes: store.get('matchReminderMinutes', 15),
     liveBoost: store.get('footballLiveBoost', true),
@@ -782,13 +782,15 @@ ipcMain.handle('set-football-leagues', guardFootball((_, payload) => {
   const leagues = isArray ? payload : (payload.leagues || []);
   const cupsEnabled = isArray ? undefined : payload.cupsEnabled;
   if (!Array.isArray(leagues)) throw new Error('leagues must be an array');
-  const valid = leagues.filter(c => LEAGUES.some(l => l.code === c));
+  const valid = leagues.filter(c => LEAGUES.some(l => l.code === c) || c === '__CUPS__');
   store.set('footballLeagues', valid);
   if (all !== undefined) {
     store.set('footballAllLeagues', all === true);
   }
   if (cupsEnabled !== undefined) {
     store.set('footballCupsEnabled', cupsEnabled === true);
+  } else if (valid.includes('__CUPS__')) {
+    store.set('footballCupsEnabled', true);
   }
   startFootballIfEnabled();
   return {
