@@ -32,8 +32,8 @@ function statusFromEspnState(state) {
 
 function createFootballMonitor({
   store,
-  favoriteTeams = [],
-  pinnedFixtures = [],
+  favoriteTeams: initialFavoriteTeams = [],
+  pinnedFixtures: initialPinnedFixtures = [],
   leagues = ['PL', 'PD', 'BL1', 'CL'],
   reminderMinutes = 15,
   liveBoost = true,
@@ -49,6 +49,9 @@ function createFootballMonitor({
   paceMs = 250
 } = {}) {
   if (!store) throw new Error('store instance is required for FootballMonitor');
+
+  let favoriteTeams = [...initialFavoriteTeams];
+  let pinnedFixtures = [...initialPinnedFixtures];
 
   let watchTimer = null;
   let sweepTimer = null;
@@ -84,6 +87,13 @@ function createFootballMonitor({
   }
 
   function emit(type, target, extraScore) {
+    const isWatched = isWatchedFixture(
+      { id: target.id, homeTeam: { name: target.homeName }, awayTeam: { name: target.awayName } },
+      favoriteTeams,
+      pinnedFixtures
+    ) || pinnedFixtures.some(p => p && p.id === target.id);
+    if (!isWatched) return;
+
     const event = {
       type,
       fixtureId: target.id,
@@ -134,7 +144,7 @@ function createFootballMonitor({
         emit('reminder', target);
       }
 
-      if (!fired.kickoff && prev === 'scheduled' && effectiveCur === 'live') {
+      if (!fired.kickoff && (!prev || prev === 'scheduled') && effectiveCur === 'live') {
         emit('kickoff', target);
       }
 
@@ -276,7 +286,7 @@ function createFootballMonitor({
               kickoffUtc: s.kickoffUtc || null,
               kickoffMs: s.kickoffUtc ? Date.parse(s.kickoffUtc) : null,
               status: st,
-              cachedStatus: null,
+              cachedStatus: 'scheduled',
               fromCache: false,
               minute: s.minute,
               scoreHome: s.scoreHome,
@@ -554,7 +564,38 @@ function createFootballMonitor({
     if (sweepTimer) { clearInterval(sweepTimer); sweepTimer = null; }
   }
 
-  return { start, stop, checkWatch, checkSweep, getStatus };
+  function clearHistory() {
+    store.set(HISTORY_KEY, []);
+    store.set(EVENT_LOG_KEY, {});
+    return true;
+  }
+
+  function deleteHistoryItem({ fixtureId, timestamp } = {}) {
+    const history = store.get(HISTORY_KEY, []);
+    const filtered = history.filter(item => {
+      if (fixtureId && item.fixtureId === fixtureId) return false;
+      if (timestamp && item.timestamp === timestamp) return false;
+      return true;
+    });
+    store.set(HISTORY_KEY, filtered);
+    return true;
+  }
+
+  function updateWatched({ favoriteTeams: favs, pinnedFixtures: pins } = {}) {
+    if (favs !== undefined) favoriteTeams = [...favs];
+    if (pins !== undefined) pinnedFixtures = [...pins];
+  }
+
+  return {
+    start,
+    stop,
+    checkWatch,
+    checkSweep,
+    getStatus,
+    clearHistory,
+    deleteHistoryItem,
+    updateWatched
+  };
 }
 
 module.exports = { createFootballMonitor, FIXTURES_KEY, HISTORY_KEY, EVENT_LOG_KEY };

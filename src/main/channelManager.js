@@ -163,12 +163,13 @@ function addChannelToList(channels = [], newChannel) {
   const list = Array.isArray(channels) ? [...channels] : [];
 
   // Check if channel already exists (by ID, URL, or Handle)
-  const existingIndex = list.findIndex(c => {
-    if (normalized.id && c.id && c.id === normalized.id) return true;
-    if (normalized.handle && c.handle && c.handle.toLowerCase() === normalized.handle.toLowerCase()) return true;
-    if (normalized.url && c.url && c.url.toLowerCase() === normalized.url.toLowerCase()) return true;
-    return false;
-  });
+  const normHandle = normalized.handle ? normalized.handle.toLowerCase() : null;
+  const normUrl = normalized.url ? normalized.url.toLowerCase() : null;
+  const existingIndex = list.findIndex(c =>
+    (normalized.id && c.id === normalized.id) ||
+    (normHandle && c.handle && c.handle.toLowerCase() === normHandle) ||
+    (normUrl && c.url && c.url.toLowerCase() === normUrl)
+  );
 
   if (existingIndex >= 0) {
     // Update existing channel properties while preserving live status / state

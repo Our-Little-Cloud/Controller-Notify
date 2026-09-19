@@ -18,40 +18,12 @@ const path = require('path');
  * @returns {{ x: number, startY: number, targetY: number, exitY: number }}
  */
 function calculatePopupCoordinates(corner, workWidth, workHeight, popupWidth = 320, popupHeight = 140) {
-  let x = workWidth - popupWidth;
-  let targetY = workHeight - popupHeight;
-  let startY = workHeight;
-  let exitY = workHeight;
-
-  switch (corner) {
-    case 'bottom-left':
-      x = 0;
-      targetY = workHeight - popupHeight;
-      startY = workHeight;
-      exitY = workHeight;
-      break;
-    case 'top-right':
-      x = workWidth - popupWidth;
-      targetY = 0;
-      startY = -popupHeight;
-      exitY = -popupHeight;
-      break;
-    case 'top-left':
-      x = 0;
-      targetY = 0;
-      startY = -popupHeight;
-      exitY = -popupHeight;
-      break;
-    case 'bottom-right':
-    default:
-      x = workWidth - popupWidth;
-      targetY = workHeight - popupHeight;
-      startY = workHeight;
-      exitY = workHeight;
-      break;
-  }
-
-  return { x, startY, targetY, exitY };
+  const isLeft = corner === 'bottom-left' || corner === 'top-left';
+  const isTop = corner === 'top-right' || corner === 'top-left';
+  const x = isLeft ? 0 : workWidth - popupWidth;
+  const targetY = isTop ? 0 : workHeight - popupHeight;
+  const startY = isTop ? -popupHeight : workHeight;
+  return { x, startY, targetY, exitY: startY };
 }
 
 /**

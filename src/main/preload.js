@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   sendClosePopup: () => ipcRenderer.send('close-popup'),
   getHistory: () => ipcRenderer.invoke('get-history'),
   clearHistory: () => ipcRenderer.invoke('clear-history'),
+  deleteHistoryItem: (item) => ipcRenderer.invoke('delete-history-item', item),
   markHistoryClicked: (videoId) => ipcRenderer.invoke('mark-history-clicked', videoId),
   getLiveStatus: () => ipcRenderer.invoke('get-live-status'),
   checkLiveNow: () => ipcRenderer.invoke('check-live-now'),
