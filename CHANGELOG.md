@@ -2,6 +2,16 @@
 
 All notable changes to Controller Notify are documented here.
 
+## [1.0.6] — International Football & UEFA Nations League Tracking
+
+### Added
+- 🌍 **International Football tracking**: Full support for **UEFA Nations League** (`UNL`), **FIFA World Cup** (`WC`), **UEFA European Championship** (`EC`), and **International Friendlies** (`INT-FR`).
+- **Unified International filter chip (`__INTL__`)**: Aggregates all international fixtures across tournaments into one convenient view, alongside a dedicated **Nations League** (`UNL`) chip for focused filtering.
+- **National Teams in Favorite Teams**: Bundled 54 UEFA nations + marquee global nations (Brazil, Argentina, Japan, USA, etc.) under the `INTL` category. Users can search, favorite, and pin national teams.
+- **ESPN Identity Resolution for National Teams**: Extended directory resolution to `uefa.nations` so national team schedules, live scores, and notifications trigger out-of-the-box.
+- **Big Match Flame Badge for International Heavyweights**: Added marquee national teams (France, Germany, Spain, England, Italy, Portugal, Netherlands, Belgium, Brazil, Argentina) to the Big Match heuristic.
+- TDD test suite in `tests/footballInternational.test.js` validating provider registries, domain filtering, monitor sweeper, and identity resolution.
+
 ## [1.0.5] — Big 5 Cups & Other Cup Category Fix
 
 ### Added
