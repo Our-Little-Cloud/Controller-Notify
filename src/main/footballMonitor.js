@@ -9,7 +9,8 @@
 const {
   isWatchedFixture,
   namesMatch,
-  foldName
+  foldName,
+  ALL_INTERNATIONAL_CODES
 } = require('./footballManager');
 const { EXTRA_LEAGUES } = require('./football');
 
@@ -52,6 +53,17 @@ function createFootballMonitor({
 
   let favoriteTeams = [...initialFavoriteTeams];
   let pinnedFixtures = [...initialPinnedFixtures];
+
+  const effectiveLeagues = [];
+  for (const c of (Array.isArray(leagues) ? leagues : [])) {
+    if (c === '__INTL__') {
+      for (const intl of ALL_INTERNATIONAL_CODES) {
+        if (!effectiveLeagues.includes(intl)) effectiveLeagues.push(intl);
+      }
+    } else if (c !== '__CUPS__' && !effectiveLeagues.includes(c)) {
+      effectiveLeagues.push(c);
+    }
+  }
 
   let watchTimer = null;
   let sweepTimer = null;
@@ -233,7 +245,7 @@ function createFootballMonitor({
     if (espnProvider && liveBoost) {
       // Poll enabled leagues PLUS any cup/extra competition that has a watched
       // fixture near its window — otherwise live cup matches never update.
-      const fdCodeSet = new Set(leagues);
+      const fdCodeSet = new Set(effectiveLeagues);
       const watchedExtraCodes = [...new Set(
         [...targets.values()]
           .map(t => t.competitionCode)
@@ -346,7 +358,7 @@ function createFootballMonitor({
     if (!fdProvider) return new Map();
     const statuses = new Map();
     const leagueSet = new Set(
-      watchedCached.map(f => f.competition.code).filter(c => leagues.includes(c))
+      watchedCached.map(f => f.competition.code).filter(c => effectiveLeagues.includes(c))
     );
     for (const code of leagueSet) {
       try {
@@ -437,8 +449,8 @@ function createFootballMonitor({
     if (espnProvider) {
       // 1. Regular leagues (PL, PD, BL1, SA, FL1, CL, etc.)
       if (typeof espnProvider.fetchSchedule === 'function') {
-        for (let i = 0; i < leagues.length; i++) {
-          const code = leagues[i];
+        for (let i = 0; i < effectiveLeagues.length; i++) {
+          const code = effectiveLeagues[i];
           try {
             const fixtures = await espnProvider.fetchSchedule(code, from, to);
             for (const f of fixtures) {
@@ -492,8 +504,8 @@ function createFootballMonitor({
     }
 
     if (fdProvider) {
-      for (let i = 0; i < leagues.length; i++) {
-        const code = leagues[i];
+      for (let i = 0; i < effectiveLeagues.length; i++) {
+        const code = effectiveLeagues[i];
         try {
           const fixtures = await fdProvider.fetchSchedule(code, from, to);
           for (const f of fixtures) merged.set(f.id, f);
@@ -501,7 +513,7 @@ function createFootballMonitor({
           err.message = `football-data.org ${code} sweep failed: ${err.message}`;
           onError(err, code);
         }
-        if (paceMs > 0 && i < leagues.length - 1) {
+        if (paceMs > 0 && i < effectiveLeagues.length - 1) {
           await new Promise(res => setTimeout(res, paceMs));
         }
       }

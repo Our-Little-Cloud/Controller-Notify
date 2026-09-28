@@ -257,6 +257,7 @@ function isWatchedFixture(fixture, favoriteTeams = [], pinnedFixtures = []) {
 }
 
 const ALL_CUP_CODES = ['ENG-FA', 'ENG-LC', 'ESP-CDR', 'ITA-CI', 'GER-PK', 'GER-SC', 'FRA-TC'];
+const ALL_INTERNATIONAL_CODES = ['UNL', 'WC', 'EC', 'INT-FR'];
 
 const LEAGUE_CUPS = {
   'PL': ['ENG-FA', 'ENG-LC'],
@@ -269,8 +270,8 @@ const LEAGUE_CUPS = {
 /**
  * Filters a fixture list for the Matches tab: Watched Fixtures always pass
  * (favorites override league filter); everything else must be in the
- * enabled league codes (with Big 5 leagues including domestic cups, and __CUPS__
- * including all domestic cups).
+ * enabled league codes (with Big 5 leagues including domestic cups, __CUPS__
+ * including all domestic cups, and __INTL__ including all international competitions).
  */
 function filterScheduleFixtures(fixtures = [], { leagues = [], favoriteTeams = [], pinnedFixtures = [] } = {}) {
   const enabled = new Set(leagues);
@@ -282,12 +283,15 @@ function filterScheduleFixtures(fixtures = [], { leagues = [], favoriteTeams = [
   if (enabled.has('__CUPS__')) {
     for (const cup of ALL_CUP_CODES) enabled.add(cup);
   }
+  if (enabled.has('__INTL__')) {
+    for (const intl of ALL_INTERNATIONAL_CODES) enabled.add(intl);
+  }
   return (Array.isArray(fixtures) ? fixtures : []).filter(f =>
     isWatchedFixture(f, favoriteTeams, pinnedFixtures) || enabled.has(f.competition && f.competition.code)
   );
 }
 
-// Big Match heuristic: both clubs in this elite set (normalized names).
+// Big Match heuristic: both clubs/nations in this elite set (normalized names).
 // Names instead of provider ids — verifiable without an API key.
 const ELITE_CLUBS = [
   'real madrid', 'barcelona', 'atletico madrid', 'sevilla', 'valencia',
@@ -295,7 +299,10 @@ const ELITE_CLUBS = [
   'tottenham hotspur', 'bayern munich', 'borussia dortmund', 'rb leipzig',
   'juventus', 'inter milan', 'inter', 'ac milan', 'milan', 'napoli', 'roma',
   'paris saint-germain', 'psg', 'marseille', 'lyon', 'ajax', 'porto',
-  'benfica', 'sporting cp', 'chelsea fc'
+  'benfica', 'sporting cp', 'chelsea fc',
+  // Elite national teams
+  'france', 'germany', 'spain', 'england', 'italy', 'portugal',
+  'netherlands', 'belgium', 'brazil', 'argentina'
 ].map(normalizeClubName);
 
 const ELITE_SET = new Set(ELITE_CLUBS);
@@ -375,5 +382,6 @@ module.exports = {
   loadBigClubs,
   searchBigClubs,
   ALL_CUP_CODES,
+  ALL_INTERNATIONAL_CODES,
   LEAGUE_CUPS
 };

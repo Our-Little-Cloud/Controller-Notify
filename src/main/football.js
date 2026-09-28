@@ -4,7 +4,7 @@
  * ESPN public scoreboard API as optional keyless "Live Boost" provider.
  */
 
-const { normalizeFixture } = require('./footballManager');
+const { normalizeFixture, normalizeClubName } = require('./footballManager');
 
 const FD_BASE = 'https://api.football-data.org/v4';
 const ESPN_BASE = 'https://site.web.api.espn.com/apis/site/v2/sports/soccer';
@@ -22,7 +22,9 @@ const LEAGUES = [
   { code: 'ELC', name: 'Championship', espnSlug: 'eng.2' },
   { code: 'DED', name: 'Eredivisie', espnSlug: 'ned.1' },
   { code: 'PPL', name: 'Primeira Liga', espnSlug: 'por.1' },
-  { code: 'BSA', name: 'Brasileirão Série A', espnSlug: 'bra.1' }
+  { code: 'BSA', name: 'Brasileirão Série A', espnSlug: 'bra.1' },
+  { code: 'UNL', name: 'UEFA Nations League', espnSlug: 'uefa.nations' },
+  { code: 'INT-FR', name: 'International Friendly', espnSlug: 'fifa.friendly' }
 ];
 
 /**
@@ -393,4 +395,31 @@ function createEspnProvider({ baseUrl = ESPN_BASE, fetchFn, onError = () => {} }
   };
 }
 
-module.exports = { LEAGUES, EXTRA_LEAGUES, createFdProvider, createEspnProvider };
+async function resolveEspnIdentity(name, provider, cache = {}) {
+  if (!name || !provider || typeof provider.fetchTeamDirectory !== 'function') return null;
+  const slugs = ['ger.1', 'eng.1', 'esp.1', 'ita.1', 'fra.1', 'uefa.nations'];
+  for (const slug of slugs) {
+    try {
+      if (!cache[slug]) {
+        cache[slug] = await provider.fetchTeamDirectory(slug);
+      }
+      const hit = (cache[slug] || []).find(t =>
+        normalizeClubName(t.name) === normalizeClubName(name)
+      );
+      if (hit) return { espnSlug: hit.espnSlug || slug, espnTeamId: hit.id };
+    } catch {
+      // Best-effort directory scan
+    }
+  }
+  return null;
+}
+
+module.exports = {
+  LEAGUES,
+  EXTRA_LEAGUES,
+  createFdProvider,
+  createEspnProvider,
+  espnSlugFor,
+  codeForEspnSlug,
+  resolveEspnIdentity
+};

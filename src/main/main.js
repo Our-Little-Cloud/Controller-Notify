@@ -11,7 +11,7 @@ const {
   migrateChannelsStore
 } = require('./channelManager');
 const { createLiveMonitor, HISTORY_KEY, MAX_HISTORY } = require('./liveMonitor');
-const { LEAGUES, createEspnProvider } = require('./football');
+const { LEAGUES, createEspnProvider, resolveEspnIdentity } = require('./football');
 const {
   loadBigClubs,
   searchBigClubs,
@@ -708,30 +708,15 @@ function getEspnProvider() {
   });
 }
 
-async function resolveEspnIdentity(name) {
-  const provider = getEspnProvider();
-  const slugs = ['ger.1', 'eng.1', 'esp.1', 'ita.1', 'fra.1'];
-  for (const slug of slugs) {
-    try {
-      if (!espnDirectoryCache[slug]) {
-        espnDirectoryCache[slug] = await provider.fetchTeamDirectory(slug);
-      }
-      const hit = espnDirectoryCache[slug].find(t =>
-        normalizeClubName(t.name) === normalizeClubName(name)
-      );
-      if (hit) return { espnSlug: hit.espnSlug, espnTeamId: hit.id };
-    } catch (err) {
-      console.error(`[Football] ESPN directory ${slug} failed:`, err.stack || err);
-    }
-  }
-  return null;
+async function resolveTeamEspnIdentity(name) {
+  return resolveEspnIdentity(name, getEspnProvider(), espnDirectoryCache);
 }
 
 ipcMain.handle('add-favorite-team', guardFootball(async (_, team) => {
   let updated = addFavoriteTeam(store.get('footballFavoriteTeams', []), team);
   // Best-effort: attach ESPN identity so per-team schedules cover cup matches too
   try {
-    const identity = await resolveEspnIdentity(team.name || (updated[updated.length - 1] || {}).name);
+    const identity = await resolveTeamEspnIdentity(team.name || (updated[updated.length - 1] || {}).name);
     if (identity) {
       updated = updated.map(t =>
         normalizeClubName(t.name) === normalizeClubName(team.name || '') ? { ...t, ...identity } : t
@@ -782,7 +767,7 @@ ipcMain.handle('set-football-leagues', guardFootball((_, payload) => {
   const leagues = isArray ? payload : (payload.leagues || []);
   const cupsEnabled = isArray ? undefined : payload.cupsEnabled;
   if (!Array.isArray(leagues)) throw new Error('leagues must be an array');
-  const valid = leagues.filter(c => LEAGUES.some(l => l.code === c) || c === '__CUPS__');
+  const valid = leagues.filter(c => LEAGUES.some(l => l.code === c) || c === '__CUPS__' || c === '__INTL__');
   store.set('footballLeagues', valid);
   if (all !== undefined) {
     store.set('footballAllLeagues', all === true);

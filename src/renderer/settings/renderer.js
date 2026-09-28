@@ -1040,6 +1040,7 @@ const LEAGUE_LABELS = {
   PL: 'EPL', PD: 'La Liga', SA: 'Serie A', BL1: 'Bundesliga', FL1: 'Ligue 1',
   CL: 'UCL', WC: 'World Cup', EC: 'Euro', ELC: 'Championship', DED: 'Eredivisie',
   PPL: 'Primeira', BSA: 'Brasileirão',
+  UNL: 'Nations League', __INTL__: 'International', 'INT-FR': 'Friendlies', INTL: 'International',
   'ENG-FA': 'FA Cup', 'ENG-LC': 'Carabao Cup', 'ESP-CDR': 'Copa del Rey',
   'ITA-CI': 'Coppa Italia', 'GER-PK': 'DFB-Pokal', 'GER-SC': 'Supercup', 'FRA-TC': 'Trophée des Champions'
 };
@@ -1155,7 +1156,9 @@ function renderLeagueChips(container, activeCodes, cupsEnabled, allMode) {
   const chips = [
     { code: '__ALL__', label: 'All', active: !!allMode },
     ...FD_LEAGUE_CODES.map(code => ({ code, label: LEAGUE_LABELS[code], active: !allMode && activeCodes.includes(code) })),
-    { code: '__CUPS__', label: 'Other Cup', active: !allMode && activeCodes.includes('__CUPS__') }
+    { code: 'UNL', label: 'Nations League', active: !allMode && activeCodes.includes('UNL') },
+    { code: '__CUPS__', label: 'Other Cup', active: !allMode && activeCodes.includes('__CUPS__') },
+    { code: '__INTL__', label: 'International', active: !allMode && activeCodes.includes('__INTL__') }
   ];
   container.innerHTML = chips.map(c => `
     <button type="button" class="league-chip ${c.active ? 'active' : ''}" data-league="${c.code}">${c.label}</button>
@@ -1208,9 +1211,11 @@ async function toggleLeague(code) {
   await saveLeagues();
 }
 
+const FAV_LEAGUE_CODES = [...FD_LEAGUE_CODES, 'INTL'];
+
 function renderFavLeagueChips(container, activeCode) {
-  container.innerHTML = FD_LEAGUE_CODES.map(code => `
-    <button type="button" class="league-chip ${code === activeCode ? 'active' : ''}" data-league="${code}">${LEAGUE_LABELS[code]}</button>
+  container.innerHTML = FAV_LEAGUE_CODES.map(code => `
+    <button type="button" class="league-chip ${code === activeCode ? 'active' : ''}" data-league="${code}">${LEAGUE_LABELS[code] || code}</button>
   `).join('');
   container.querySelectorAll('.league-chip').forEach(chip => {
     chip.addEventListener('click', () => setFavSearchLeague(chip.dataset.league));
