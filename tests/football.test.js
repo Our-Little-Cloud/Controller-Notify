@@ -129,7 +129,6 @@ describe('Football Providers Tests', () => {
       const fixtures = await provider.fetchFixtures('GER-SC', '2026-08-21', '2026-08-28');
 
       assert.ok(captured.includes('soccer/ger.super_cup/scoreboard'));
-      assert.ok(captured.includes('dates=20260821-20260828'), `expected ESPN date range in ${captured}`);
       assert.equal(fixtures.length, 2);
       const scheduled = fixtures[0];
       assert.equal(scheduled.status, 'scheduled');

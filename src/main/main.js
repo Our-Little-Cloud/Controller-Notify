@@ -113,9 +113,9 @@ function buildFootballMonitor() {
     store,
     favoriteTeams: store.get('footballFavoriteTeams', []),
     pinnedFixtures: store.get('footballPinnedFixtures', []),
-    leagues: store.get('footballAllLeagues', true)
+    leagues: (store.get('footballAllLeagues', true)
       ? LEAGUES.map(l => l.code)
-      : store.get('footballLeagues', ['PL', 'PD', 'BL1', 'CL']),
+      : store.get('footballLeagues', ['PL', 'PD', 'BL1', 'CL'])).filter(c => c !== '__CUPS__'),
     cupsEnabled: store.get('footballCupsEnabled', true),
     reminderMinutes: store.get('matchReminderMinutes', 15),
     liveBoost: store.get('footballLiveBoost', true),
@@ -369,34 +369,29 @@ ipcMain.on('open-stream-url', (_, target) => {
     shell.openExternal(target);
     return;
   }
-  const id = target || currentStreamVideoId;
+  const id = typeof target === 'string' ? target : null;
   if (id) {
     const url = `https://www.youtube.com/watch?v=${id}`;
-    if (store.get('openInBrowser')) {
+    if (store.get('openInBrowser', true)) {
       shell.openExternal(url);
     } else {
-      openInAppPlayer(url);
+      windowManager.openInAppPlayer(url);
     }
   } else {
     const channelUrl = store.get('channelUrl');
     if (channelUrl) {
-      const url = channelUrl.startsWith('http')
-        ? channelUrl
-        : `https://youtube.com/${channelUrl.startsWith('@') ? '' : '@'}${channelUrl}`;
-      shell.openExternal(url);
+      shell.openExternal(channelUrl.startsWith('http') ? channelUrl : `https://www.youtube.com/${channelUrl.startsWith('@') ? '' : '@'}${channelUrl}`);
     }
   }
 });
 
 ipcMain.on('open-external-url', (_, rawUrl) => {
   if (!rawUrl || typeof rawUrl !== 'string') return;
-  let url = rawUrl.trim();
+  const url = rawUrl.trim();
   if (!url) return;
 
   if (url.startsWith('https://') || url.startsWith('http://')) {
     shell.openExternal(url);
-  } else if (url.startsWith('@')) {
-    shell.openExternal(`https://www.youtube.com/${url}`);
   } else if (url.startsWith('UC') && url.length === 24) {
     shell.openExternal(`https://www.youtube.com/channel/${url}`);
   } else if (url.startsWith('youtube.com') || url.startsWith('www.youtube.com')) {
@@ -538,6 +533,32 @@ ipcMain.handle('get-history', () => {
 
 ipcMain.handle('clear-history', () => {
   liveMonitor.clearHistory();
+  if (footballMonitor && typeof footballMonitor.clearHistory === 'function') {
+    footballMonitor.clearHistory();
+  } else {
+    store.set('matchHistory', []);
+    store.set('matchEventLog', {});
+  }
+  return { success: true };
+});
+
+ipcMain.handle('delete-history-item', (_, item) => {
+  if (!item) return { success: false };
+  if (item.kind === 'fixture' || item.fixtureId) {
+    if (footballMonitor && typeof footballMonitor.deleteHistoryItem === 'function') {
+      footballMonitor.deleteHistoryItem(item);
+    } else {
+      const history = store.get('matchHistory', []);
+      const filtered = history.filter(h => {
+        if (item.fixtureId && h.fixtureId === item.fixtureId) return false;
+        if (item.timestamp && h.timestamp === item.timestamp) return false;
+        return true;
+      });
+      store.set('matchHistory', filtered);
+    }
+  } else {
+    liveMonitor.deleteHistoryItem(item);
+  }
   return { success: true };
 });
 
@@ -727,6 +748,12 @@ ipcMain.handle('add-favorite-team', guardFootball(async (_, team) => {
 ipcMain.handle('remove-favorite-team', guardFootball((_, teamId) => {
   const updated = removeFavoriteTeam(store.get('footballFavoriteTeams', []), teamId);
   store.set('footballFavoriteTeams', updated);
+  if (footballMonitor && typeof footballMonitor.updateWatched === 'function') {
+    footballMonitor.updateWatched({
+      favoriteTeams: updated,
+      pinnedFixtures: store.get('footballPinnedFixtures', [])
+    });
+  }
   return { success: true, favoriteTeams: updated };
 }));
 
@@ -735,8 +762,16 @@ ipcMain.handle('toggle-pin-fixture', guardFootball((_, fixture) => {
   if (!normalized) throw new Error('Invalid fixture data');
   const updated = togglePinnedFixture(store.get('footballPinnedFixtures', []), normalized);
   store.set('footballPinnedFixtures', updated);
-  if (footballMonitor) Promise.resolve(footballMonitor.checkWatch()).catch(err =>
-    console.error('[Football] watch after pin failed:', err.stack || err));
+  if (footballMonitor) {
+    if (typeof footballMonitor.updateWatched === 'function') {
+      footballMonitor.updateWatched({
+        favoriteTeams: store.get('footballFavoriteTeams', []),
+        pinnedFixtures: updated
+      });
+    }
+    Promise.resolve(footballMonitor.checkWatch()).catch(err =>
+      console.error('[Football] watch after pin failed:', err.stack || err));
+  }
   return { success: true, pinnedFixtures: updated };
 }));
 
@@ -747,13 +782,15 @@ ipcMain.handle('set-football-leagues', guardFootball((_, payload) => {
   const leagues = isArray ? payload : (payload.leagues || []);
   const cupsEnabled = isArray ? undefined : payload.cupsEnabled;
   if (!Array.isArray(leagues)) throw new Error('leagues must be an array');
-  const valid = leagues.filter(c => LEAGUES.some(l => l.code === c));
+  const valid = leagues.filter(c => LEAGUES.some(l => l.code === c) || c === '__CUPS__');
   store.set('footballLeagues', valid);
   if (all !== undefined) {
     store.set('footballAllLeagues', all === true);
   }
   if (cupsEnabled !== undefined) {
     store.set('footballCupsEnabled', cupsEnabled === true);
+  } else if (valid.includes('__CUPS__')) {
+    store.set('footballCupsEnabled', true);
   }
   startFootballIfEnabled();
   return {

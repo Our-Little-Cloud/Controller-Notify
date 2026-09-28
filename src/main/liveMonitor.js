@@ -67,6 +67,17 @@ function createLiveMonitor({
     return true;
   }
 
+  function deleteHistoryItem({ videoId, timestamp }) {
+    const history = store.get(HISTORY_KEY, []);
+    const filtered = history.filter(item => {
+      if (videoId && item.videoId === videoId) return false;
+      if (timestamp && item.timestamp === timestamp) return false;
+      return true;
+    });
+    store.set(HISTORY_KEY, filtered);
+    return true;
+  }
+
   function markHistoryClicked(videoId) {
     const history = store.get(HISTORY_KEY, []);
     const item = history.find(h => h.videoId === videoId);
@@ -211,6 +222,7 @@ function createLiveMonitor({
     getStatus,
     getHistory,
     clearHistory,
+    deleteHistoryItem,
     addToHistory,
     markHistoryClicked
   };

@@ -2,6 +2,21 @@
 
 All notable changes to Controller Notify are documented here.
 
+## [1.0.5] — Big 5 Cups & Other Cup Category Fix
+
+### Added
+- Domestic side cups (FA Cup, Carabao Cup, Copa del Rey, Coppa Italia, DFB-Pokal, DFL-Supercup, Trophée des Champions) automatically included when selecting their respective Big 5 league filters
+- Restored **Other Cup** dedicated filter chip to display all domestic side cup fixtures across all nations
+- TDD test suite in `tests/footballCupsAndCategories.test.js` validating cup inclusion and category filtering
+
+### Fixed
+- Fixed ESPN scoreboard API sweeper error (`Failed to get events endpoint`) caused by unsupported hyphenated date ranges (`dates=YYYYMMDD-YYYYMMDD`), replacing with default scoreboard and calendar single-date querying
+
+## [1.0.4] — Maintenance & Cleanups
+
+### Changed
+- Cleanup diff leftovers and dependencies updates
+
 ## [1.0.3] — Live Scores & Formatting Update
 
 ### Added

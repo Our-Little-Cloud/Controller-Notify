@@ -256,13 +256,32 @@ function isWatchedFixture(fixture, favoriteTeams = [], pinnedFixtures = []) {
   });
 }
 
+const ALL_CUP_CODES = ['ENG-FA', 'ENG-LC', 'ESP-CDR', 'ITA-CI', 'GER-PK', 'GER-SC', 'FRA-TC'];
+
+const LEAGUE_CUPS = {
+  'PL': ['ENG-FA', 'ENG-LC'],
+  'PD': ['ESP-CDR'],
+  'SA': ['ITA-CI'],
+  'BL1': ['GER-PK', 'GER-SC'],
+  'FL1': ['FRA-TC']
+};
+
 /**
  * Filters a fixture list for the Matches tab: Watched Fixtures always pass
  * (favorites override league filter); everything else must be in the
- * enabled league codes.
+ * enabled league codes (with Big 5 leagues including domestic cups, and __CUPS__
+ * including all domestic cups).
  */
 function filterScheduleFixtures(fixtures = [], { leagues = [], favoriteTeams = [], pinnedFixtures = [] } = {}) {
   const enabled = new Set(leagues);
+  for (const lg of leagues) {
+    if (LEAGUE_CUPS[lg]) {
+      for (const cup of LEAGUE_CUPS[lg]) enabled.add(cup);
+    }
+  }
+  if (enabled.has('__CUPS__')) {
+    for (const cup of ALL_CUP_CODES) enabled.add(cup);
+  }
   return (Array.isArray(fixtures) ? fixtures : []).filter(f =>
     isWatchedFixture(f, favoriteTeams, pinnedFixtures) || enabled.has(f.competition && f.competition.code)
   );
@@ -354,5 +373,7 @@ module.exports = {
   namesMatch,
   foldName,
   loadBigClubs,
-  searchBigClubs
+  searchBigClubs,
+  ALL_CUP_CODES,
+  LEAGUE_CUPS
 };

@@ -928,12 +928,12 @@ function renderHistory(items) {
     return;
   }
 
-  historyList.innerHTML = items.map(item => {
+  historyList.innerHTML = items.map((item, index) => {
     if (item.kind === 'fixture') {
       const score = item.scoreHome != null ? `${item.scoreHome}-${item.scoreAway}` : '';
       const label = item.type === 'reminder' ? 'starts soon' : item.type === 'kickoff' ? `kicked off ${score}` : `FT ${score}`;
       return `
-      <div class="history-item" data-kind="fixture">
+      <div class="history-item" data-index="${index}" data-kind="fixture">
         <div class="history-thumbnail" style="display:flex;align-items:center;justify-content:center;color:var(--fb-live-accent);">${SVG_ICONS.football}</div>
         <div class="history-info">
           <div class="history-title">${escapeHtml(item.title)} ${score ? `<strong>${escapeHtml(score)}</strong>` : ''}</div>
@@ -942,10 +942,11 @@ function renderHistory(items) {
             <span class="history-badge">${SVG_ICONS.football} ${escapeHtml(label)}</span>
           </div>
         </div>
+        <button type="button" class="history-delete-btn" title="Delete notification" aria-label="Delete notification">✕</button>
       </div>`;
     }
     return `
-    <div class="history-item ${item.clicked ? 'clicked' : ''}" data-video-id="${item.videoId}">
+    <div class="history-item ${item.clicked ? 'clicked' : ''}" data-index="${index}" data-video-id="${item.videoId}">
       ${item.thumbnail ? `<img src="${item.thumbnail}" alt="" class="history-thumbnail">` : '<div class="history-thumbnail" style="display:flex;align-items:center;justify-content:center;font-size:18px;">🎮</div>'}
       <div class="history-info">
         <div class="history-title">${escapeHtml(item.title)}</div>
@@ -955,16 +956,33 @@ function renderHistory(items) {
           <span class="history-channel">${escapeHtml(item.channelTitle)}</span>
         </div>
       </div>
+      <button type="button" class="history-delete-btn" title="Delete notification" aria-label="Delete notification">✕</button>
     </div>`;
   }).join('');
 
   // Add click handlers (streams only)
   historyList.querySelectorAll('.history-item[data-video-id]').forEach(el => {
-    el.addEventListener('click', async () => {
+    el.addEventListener('click', async (e) => {
+      if (e.target.closest('.history-delete-btn')) return;
       const videoId = el.dataset.videoId;
       await window.api.markHistoryClicked(videoId);
       el.classList.add('clicked');
       window.api.sendClickStream();
+    });
+  });
+
+  // Add delete handlers for individual notifications
+  historyList.querySelectorAll('.history-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const parent = btn.closest('.history-item');
+      if (!parent) return;
+      const idx = parent.dataset.index;
+      const targetItem = items[idx];
+      if (targetItem && window.api.deleteHistoryItem) {
+        await window.api.deleteHistoryItem(targetItem);
+        await loadHistory();
+      }
     });
   });
 }
@@ -972,7 +990,7 @@ function renderHistory(items) {
 clearHistoryBtn.addEventListener('click', async () => {
   if (confirm('Clear all notification history?')) {
     await window.api.clearHistory();
-    historyList.innerHTML = '<div class="history-empty">No notifications yet</div>';
+    await loadHistory();
   }
 });
 
@@ -1121,7 +1139,6 @@ async function loadFootballTab() {
     renderLeagueChips(leagueChipsEl, footballState.leagues, footballState.cupsEnabled, footballState.allMode);
     renderFavLeagueChips(favLeagueChipsEl, favSearchLeague);
     renderFavoriteTeams();
-    renderFavoriteTeamsMatches();
     renderPinnedFixtures();
     renderFavoriteTeamsMatches();
     renderFixtures();
@@ -1138,7 +1155,7 @@ function renderLeagueChips(container, activeCodes, cupsEnabled, allMode) {
   const chips = [
     { code: '__ALL__', label: 'All', active: !!allMode },
     ...FD_LEAGUE_CODES.map(code => ({ code, label: LEAGUE_LABELS[code], active: !allMode && activeCodes.includes(code) })),
-    { code: '__CUPS__', label: 'Other Cup', active: !!cupsEnabled }
+    { code: '__CUPS__', label: 'Other Cup', active: !allMode && activeCodes.includes('__CUPS__') }
   ];
   container.innerHTML = chips.map(c => `
     <button type="button" class="league-chip ${c.active ? 'active' : ''}" data-league="${c.code}">${c.label}</button>
@@ -1147,7 +1164,6 @@ function renderLeagueChips(container, activeCodes, cupsEnabled, allMode) {
     chip.addEventListener('click', () => {
       const code = chip.dataset.league;
       if (code === '__ALL__') selectAllLeagues();
-      else if (code === '__CUPS__') toggleCups();
       else toggleLeague(code);
     });
   });
@@ -1162,7 +1178,7 @@ async function saveLeagues() {
     await window.api.setFootballLeagues({
       all: footballState.allMode,
       leagues: footballState.leagues,
-      cupsEnabled: footballState.cupsEnabled
+      cupsEnabled: true
     });
   } catch (error) {
     console.error('Failed to save leagues:', error);
@@ -1171,12 +1187,8 @@ async function saveLeagues() {
 
 function selectAllLeagues() {
   footballState.allMode = true;
+  footballState.leagues = [];
   saveLeagues();
-}
-
-async function toggleCups() {
-  footballState.cupsEnabled = !footballState.cupsEnabled;
-  await saveLeagues();
 }
 
 async function toggleLeague(code) {
@@ -1186,6 +1198,9 @@ async function toggleLeague(code) {
   } else {
     if (footballState.leagues.includes(code)) {
       footballState.leagues = footballState.leagues.filter(c => c !== code);
+      if (footballState.leagues.length === 0) {
+        footballState.allMode = true;
+      }
     } else {
       footballState.leagues = [...footballState.leagues, code];
     }
@@ -1277,6 +1292,33 @@ function renderFixturesInner() {
     return true;
   });
 
+  const ALL_CUP_CODES = ['ENG-FA', 'ENG-LC', 'ESP-CDR', 'ITA-CI', 'GER-PK', 'GER-SC', 'FRA-TC'];
+
+  const LEAGUE_CUPS = {
+    'PL': ['ENG-FA', 'ENG-LC'],
+    'PD': ['ESP-CDR'],
+    'SA': ['ITA-CI'],
+    'BL1': ['GER-PK', 'GER-SC'],
+    'FL1': ['FRA-TC']
+  };
+
+  const allowedCodes = new Set(footballState.leagues);
+  // 1. Big 5 leagues automatically include their domestic side cups
+  for (const lg of footballState.leagues) {
+    if (LEAGUE_CUPS[lg]) {
+      for (const cupCode of LEAGUE_CUPS[lg]) {
+        allowedCodes.add(cupCode);
+      }
+    }
+  }
+
+  // 2. 'Other Cup' category includes ALL domestic side cups
+  if (footballState.leagues.includes('__CUPS__')) {
+    for (const cupCode of ALL_CUP_CODES) {
+      allowedCodes.add(cupCode);
+    }
+  }
+
   // All mode shows everything; otherwise watched fixtures (favorite team
   // playing or pinned, matched server-side via cross-provider club identity)
   // always pass and other fixtures must match an enabled league chip (Q10).
@@ -1284,7 +1326,7 @@ function renderFixturesInner() {
     footballState.allMode ||
     f.watched ||
     isPinned(f) ||
-    footballState.leagues.includes(f.competition.code)
+    allowedCodes.has(f.competition.code)
   );
 
   // Filter fixtures specifically for the selected date
