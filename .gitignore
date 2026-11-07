@@ -36,5 +36,6 @@ CONTEXT.md
 .opencode
 .env.example
 logs/
-
+.claude/
+.claude
 scratch/
